@@ -1,0 +1,40 @@
+﻿.pageStyle {
+    background: url(images/LandingPageBG.png);
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: cover;
+}
+
+.title{
+    font-family: var(--cf-title-font);
+    font-size: 3rem;
+    color: var(--cf-title-color);
+    line-height: 3rem;
+}
+
+.subTitle {
+    font-family: var(--cf-body-font);
+    font-size: 1rem;
+}
+
+.devicons {
+    font-size: 2rem;
+}
+
+@media (min-wiodth: 992px) {
+    .title {
+        font-family: var(--cf-title-font);
+        font-size: 3.5rem;
+        color: var(--cf-title-color);
+        line-height: 3rem;
+    }
+
+    .subTitle {
+        font-family: var(--cf-body-font);
+        font-size: 1.5rem;
+    }
+
+    .devicons {
+        font-size: 2.5rem;
+    }
+})

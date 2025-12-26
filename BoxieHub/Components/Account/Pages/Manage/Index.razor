@@ -1,0 +1,160 @@
+﻿@page "/Account/Manage"
+
+@using System.ComponentModel.DataAnnotations
+@using Microsoft.AspNetCore.Identity
+@using BoxieHub.Data
+@using Microsoft.EntityFrameworkCore
+
+@inject UserManager<ApplicationUser> UserManager
+@inject SignInManager<ApplicationUser> SignInManager
+@inject IdentityUserAccessor UserAccessor
+@inject IdentityRedirectManager RedirectManager
+@inject ApplicationDbContext context
+
+<PageTitle>Profile</PageTitle>
+
+<h3>Profile</h3>
+<StatusMessage />
+
+<div class="row">
+    <div class="col-md-6">
+        <EditForm Model="Input" FormName="profile" OnValidSubmit="OnValidSubmitAsync" method="post" enctype="multipart/form-data">
+            <DataAnnotationsValidator />
+            <ValidationSummary class="text-danger" role="alert" />
+            <div class="form-floating mb-3">
+                <input type="text" value="@username" class="form-control" placeholder="Please choose your username." disabled />
+                <label for="username" class="form-label">Username</label>
+            </div>
+            <div class="form-floating mb-3">
+                <InputText @bind-Value="Input.FirstName" class="form-control" placeholder="Please enter your first name." />
+                <label for="firstName" class="form-label">First Name</label>
+                <ValidationMessage For="() => Input.FirstName" class="text-danger" />
+            </div>
+            <div class="form-floating mb-3">
+                <InputText @bind-Value="Input.LastName" class="form-control" placeholder="Please enter your last name." />
+                <label for="lastName" class="form-label">Last Name</label>
+                <ValidationMessage For="() => Input.LastName" class="text-danger" />
+            </div>
+            <div class="form-floating mb-3">
+                <InputText @bind-Value="Input.PhoneNumber" class="form-control" placeholder="Please enter your phone number." />
+                <label for="phone-number" class="form-label">Phone number</label>
+                <ValidationMessage For="() => Input.PhoneNumber" class="text-danger" />
+            </div>
+
+            <img src="@profilePictureUrl" alt="Profile Picture" class="img-fluid p-3 rounded" id="profilePicPreview" />
+            <div class="mb-3">
+                <label for="Input.ProfilePicture" class="form-label">Profile Picture</label>
+                <input type="file" class="form-control" name="Input.ProfilePicture" accept=".jpg, jpge, .png, .svg, .gif"
+                       onchange="document.getElementById('profilePicPreview').src = window.URL.createObjectURL(this.files[0])" />
+            </div>
+            <button type="submit" class="w-100 btn btn-lg btn-primary">Save</button>
+        </EditForm>
+    </div>
+</div>
+
+@code {
+    private ApplicationUser user = default!;
+    private string? username;
+    private string? phoneNumber;
+    private string? firstName;
+    private string? lastName;
+    private string? profilePictureUrl;
+
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    [SupplyParameterFromForm]
+    private InputModel Input { get; set; } = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        user = await UserAccessor.GetRequiredUserAsync(HttpContext);
+        username = await UserManager.GetUserNameAsync(user);
+        phoneNumber = await UserManager.GetPhoneNumberAsync(user);
+        firstName = user.FirstName;
+        lastName = user.LastName;
+
+        Input.PhoneNumber ??= phoneNumber;
+        Input.FirstName ??= firstName;
+        Input.LastName ??= lastName;
+
+        profilePictureUrl = user.ProfilePictureId.HasValue ? $"/uploads/{user.ProfilePictureId}" : ImageHelper.DefaultProfilePictureUrl;
+    }
+
+    private async Task OnValidSubmitAsync()
+    {                
+        if(Input.ProfilePicture != null)
+            {
+            try
+            {
+
+                //save  the uploaded profile picture
+                ImageUpload newProfilePic = await ImageHelper.GetImageUploadAsync(Input.ProfilePicture);
+                context.Add(newProfilePic);
+
+                //delete the old profile picture if it exists
+                ImageUpload? oldProfilePic = await context.Images.FirstOrDefaultAsync(i => i.Id == user.ProfilePictureId);
+                if (oldProfilePic != null)
+                {
+                    context.Images.Remove(oldProfilePic);
+                }
+
+                //update the user with the new profile picture
+                user.ProfilePictureId = newProfilePic.Id;
+                context.Users.Update(user);
+                await context.SaveChangesAsync();
+
+            }        
+            catch
+            {
+                RedirectManager.RedirectToCurrentPageWithStatus("The image could not be uploaded", HttpContext);
+                return;
+            }
+        }
+
+
+        if (Input.PhoneNumber != phoneNumber)
+        {
+            var setPhoneResult = await UserManager.SetPhoneNumberAsync(user, Input.PhoneNumber);
+            if (!setPhoneResult.Succeeded)
+            {
+                RedirectManager.RedirectToCurrentPageWithStatus("Error: Failed to set phone number.", HttpContext);
+            }
+        }
+
+        if (firstName != Input.FirstName || lastName != Input.LastName)
+        {
+            user.FirstName = Input.FirstName;
+            user.LastName = Input.LastName;
+
+            var updateResult = await UserManager.UpdateAsync(user);
+
+            if (!updateResult.Succeeded)
+            {
+                RedirectManager.RedirectToCurrentPageWithStatus("Error: Failed to update profile.", HttpContext);
+                return;
+            }
+
+
+        }
+
+        await SignInManager.RefreshSignInAsync(user);
+        RedirectManager.RedirectToCurrentPageWithStatus("Your profile has been updated", HttpContext);
+    }
+
+    private sealed class InputModel
+    {
+        [Required]
+        [Display(Name = "First Name")]
+        public string? FirstName { get; set; }
+        [Required]
+        [Display(Name = "Last Name")]
+        public string? LastName { get; set; }
+
+        [Phone]
+        [Display(Name = "Phone number")]
+        public string? PhoneNumber { get; set; }
+
+        public IFormFile? ProfilePicture { get; set; }
+    }
+}
