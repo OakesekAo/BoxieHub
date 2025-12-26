@@ -1,5 +1,5 @@
 ﻿using System.Security.Claims;
-using BoxieHub.Data;
+using BoxieHub.Models;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Options;
 

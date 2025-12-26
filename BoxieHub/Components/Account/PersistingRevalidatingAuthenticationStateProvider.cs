@@ -1,7 +1,7 @@
 using System.Diagnostics;
 using System.Security.Claims;
 using BoxieHub.Client;
-using BoxieHub.Data;
+using BoxieHub.Models;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Components.Server;

@@ -1,4 +1,4 @@
-using BoxieHub.Data;
+using BoxieHub.Models;
 using Microsoft.AspNetCore.Identity;
 
 namespace BoxieHub.Components.Account

@@ -2,7 +2,7 @@ using System.Security.Claims;
 using System.Text.Json;
 using BoxieHub.Components.Account.Pages;
 using BoxieHub.Components.Account.Pages.Manage;
-using BoxieHub.Data;
+using BoxieHub.Models;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Http.Extensions;
