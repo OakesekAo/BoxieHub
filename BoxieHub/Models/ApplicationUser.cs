@@ -7,13 +7,9 @@ namespace BoxieHub.Models
     public class ApplicationUser : IdentityUser
     {
         [Required]
-        public string FirstName { get; set; }
-        [Required]
-        public string LastName { get; set; }
-
-        public Guid? ProfilePictureId { get; set; }
-
-        public virtual ImageUpload? ProfilePicture { get; set; }
+        public string Name { get; set; }
+        // Multi-household stub (not required for MVP features, but present)
+        // TODO: Implement multi-household support in the future
     }
 
 }
