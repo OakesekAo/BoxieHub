@@ -1,6 +1,6 @@
 using System.Text.Json.Serialization;
 
-namespace BoxieHub.TonieCloud.Models;
+namespace BoxieHub.Models.BoxieCloud;
 
 /// <summary>
 /// S3-compatible upload token response from Tonie Cloud

@@ -19,11 +19,12 @@ public interface ISyncJobService
     /// </summary>
     /// <param name="deviceId">The device to sync to.</param>
     /// <param name="assignmentId">The content assignment (Device ? Content mapping).</param>
+    /// <param name="audioStream">The audio stream to upload.</param>
     /// <param name="requestedBy">User ID who requested the sync.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>The created and executed SyncJob record.</returns>
     /// <exception cref="ArgumentException">If device or assignment not found.</exception>
-    Task<SyncJob> ExecuteSyncAsync(int deviceId, int assignmentId, string requestedBy, CancellationToken cancellationToken = default);
+    Task<SyncJob> ExecuteSyncAsync(int deviceId, int assignmentId, Stream audioStream, string requestedBy, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Gets the status of a sync job.

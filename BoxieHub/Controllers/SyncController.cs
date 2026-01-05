@@ -1,5 +1,7 @@
+using BoxieHub.Data;
 using BoxieHub.Services.Sync;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace BoxieHub.Controllers;
 
@@ -11,17 +13,25 @@ namespace BoxieHub.Controllers;
 public class SyncController : ControllerBase
 {
     private readonly ISyncJobService _syncJobService;
+    private readonly ApplicationDbContext _dbContext;
+    private readonly IWebHostEnvironment _environment;
     private readonly ILogger<SyncController> _logger;
 
-    public SyncController(ISyncJobService syncJobService, ILogger<SyncController> logger)
+    public SyncController(
+        ISyncJobService syncJobService, 
+        ApplicationDbContext dbContext,
+        IWebHostEnvironment environment,
+        ILogger<SyncController> logger)
     {
         _syncJobService = syncJobService ?? throw new ArgumentNullException(nameof(syncJobService));
+        _dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
+        _environment = environment ?? throw new ArgumentNullException(nameof(environment));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
     /// <summary>
     /// Applies a content assignment to a device immediately.
-    /// Creates a sync job that pushes the assigned content to the device via the Python adapter.
+    /// Creates a sync job that pushes the assigned content to the device via BoxieCloud.
     /// </summary>
     /// <param name="deviceId">The device ID to sync to.</param>
     /// <param name="assignmentId">The content assignment ID.</param>
@@ -33,7 +43,39 @@ public class SyncController : ControllerBase
         try
         {
             var userId = User.FindFirst("sub")?.Value ?? "system";
-            var job = await _syncJobService.ExecuteSyncAsync(deviceId, assignmentId, userId, cancellationToken);
+            
+            // Load the assignment to get the content item and upload
+            var assignment = await _dbContext.ContentAssignments
+                .Include(a => a.ContentItem)
+                    .ThenInclude(c => c.Upload)
+                .FirstOrDefaultAsync(a => a.Id == assignmentId && a.DeviceId == deviceId, cancellationToken);
+            
+            if (assignment == null)
+            {
+                return NotFound(new { error = $"Assignment {assignmentId} not found for device {deviceId}" });
+            }
+            
+            if (assignment.ContentItem?.Upload == null)
+            {
+                return BadRequest(new { error = "Content item has no associated file upload" });
+            }
+            
+            // Get audio file path
+            var audioFilePath = Path.Combine(
+                _environment.WebRootPath ?? _environment.ContentRootPath,
+                "files",
+                "audio",
+                assignment.ContentItem.UploadId.ToString());
+            
+            if (!System.IO.File.Exists(audioFilePath))
+            {
+                return NotFound(new { error = $"Audio file not found at {audioFilePath}" });
+            }
+            
+            // Open file stream and execute sync
+            using var fileStream = System.IO.File.OpenRead(audioFilePath);
+            var job = await _syncJobService.ExecuteSyncAsync(deviceId, assignmentId, fileStream, userId, cancellationToken);
+            
             return Ok(job);
         }
         catch (ArgumentException ex)

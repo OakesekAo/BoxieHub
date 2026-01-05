@@ -1,4 +1,4 @@
-namespace BoxieHub.TonieCloud.Services;
+namespace BoxieHub.Services.BoxieCloud;
 
 /// <summary>
 /// Interface for S3-compatible file storage operations

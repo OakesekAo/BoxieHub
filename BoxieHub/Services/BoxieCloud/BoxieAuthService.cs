@@ -1,28 +1,29 @@
+using System.Collections.Concurrent;
 using System.Net.Http.Json;
-using BoxieHub.TonieCloud.Models;
+using BoxieHub.Models.BoxieCloud;
 using Microsoft.Extensions.Caching.Memory;
-using Microsoft.Extensions.Logging;
 
-namespace BoxieHub.TonieCloud.Services;
+namespace BoxieHub.Services.BoxieCloud;
 
 /// <summary>
 /// Handles OAuth authentication with Tonie Cloud
-/// Manages token lifecycle and in-memory caching
+/// Manages token lifecycle and in-memory caching with expiry tracking
 /// </summary>
-public class TonieAuthService : ITonieAuthService
+public class BoxieAuthService : IBoxieAuthService
 {
     private readonly HttpClient _httpClient;
     private readonly IMemoryCache _cache;
-    private readonly ILogger<TonieAuthService> _logger;
+    private readonly ILogger<BoxieAuthService> _logger;
+    private readonly ConcurrentDictionary<string, DateTime> _tokenExpiry = new();
     
     private const string TOKEN_ENDPOINT = "https://login.tonies.com/auth/realms/tonies/protocol/openid-connect/token";
-    private const string CLIENT_ID = "tonies-webapp";
-    private const int TOKEN_CACHE_MINUTES = 55; // Refresh before 60min expiry
+    private const string CLIENT_ID = "my-tonies";
+    private const int TOKEN_SAFETY_BUFFER_MINUTES = 5; // Refresh 5min before actual expiry
     
-    public TonieAuthService(
+    public BoxieAuthService(
         HttpClient httpClient, 
         IMemoryCache cache,
-        ILogger<TonieAuthService> logger)
+        ILogger<BoxieAuthService> logger)
     {
         _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
         _cache = cache ?? throw new ArgumentNullException(nameof(cache));
@@ -40,22 +41,41 @@ public class TonieAuthService : ITonieAuthService
             throw new ArgumentException("Password is required", nameof(password));
         
         var cacheKey = $"tonie_token_{username}";
+        var expiryKey = $"tonie_expiry_{username}";
         
-        // Try to get from cache first
-        if (_cache.TryGetValue(cacheKey, out string? cachedToken) && !string.IsNullOrEmpty(cachedToken))
+        // Try to get from cache first and check if still valid
+        if (_cache.TryGetValue(cacheKey, out string? cachedToken) && 
+            !string.IsNullOrEmpty(cachedToken) &&
+            _tokenExpiry.TryGetValue(expiryKey, out var expiry) &&
+            DateTime.UtcNow < expiry.AddMinutes(-TOKEN_SAFETY_BUFFER_MINUTES))
         {
-            _logger.LogDebug("Using cached token for {Username}", username);
+            var timeRemaining = expiry - DateTime.UtcNow;
+            _logger.LogDebug("Using cached token for {Username} (expires in {Minutes:F1}min)", 
+                username, timeRemaining.TotalMinutes);
             return cachedToken;
         }
         
-        // Request new token
-        _logger.LogInformation("Requesting new token for {Username}", username);
+        // Request new token (expired or not in cache)
+        if (_tokenExpiry.ContainsKey(expiryKey))
+        {
+            _logger.LogInformation("Token expired or expiring soon for {Username}, requesting new token", username);
+        }
+        else
+        {
+            _logger.LogInformation("No cached token for {Username}, requesting new token", username);
+        }
+        
         var tokenResponse = await RequestTokenAsync(username, password, ct);
         
-        // Cache with expiration
-        _cache.Set(cacheKey, tokenResponse.AccessToken, TimeSpan.FromMinutes(TOKEN_CACHE_MINUTES));
+        // Cache with expiration and track expiry time
+        var expiryTime = DateTime.UtcNow.AddSeconds(tokenResponse.ExpiresIn);
+        var cacheExpiration = TimeSpan.FromSeconds(tokenResponse.ExpiresIn).Subtract(TimeSpan.FromMinutes(TOKEN_SAFETY_BUFFER_MINUTES));
         
-        _logger.LogInformation("Token cached for {Username} (expires in {Minutes}min)", username, TOKEN_CACHE_MINUTES);
+        _cache.Set(cacheKey, tokenResponse.AccessToken, cacheExpiration);
+        _tokenExpiry[expiryKey] = expiryTime;
+        
+        _logger.LogInformation("Token cached for {Username} (expires at {ExpiryTime:HH:mm:ss} UTC, ~{Minutes}min)", 
+            username, expiryTime, tokenResponse.ExpiresIn / 60);
         return tokenResponse.AccessToken;
     }
     
@@ -64,6 +84,8 @@ public class TonieAuthService : ITonieAuthService
     /// </summary>
     private async Task<TonieTokenResponse> RequestTokenAsync(string username, string password, CancellationToken ct)
     {
+        _logger.LogInformation("Requesting token with client_id: {ClientId}", CLIENT_ID);
+        
         var request = new FormUrlEncodedContent(new Dictionary<string, string>
         {
             ["grant_type"] = "password",

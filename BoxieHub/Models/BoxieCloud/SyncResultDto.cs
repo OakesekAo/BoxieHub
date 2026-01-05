@@ -1,4 +1,4 @@
-namespace BoxieHub.TonieCloud.Models;
+namespace BoxieHub.Models.BoxieCloud;
 
 /// <summary>
 /// Result of a sync/upload operation

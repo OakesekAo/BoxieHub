@@ -1,34 +1,39 @@
 using BoxieHub.Client.Models.Enums;
 using BoxieHub.Data;
 using BoxieHub.Models;
-using BoxieHub.Services.PythonAdapter;
-using BoxieHub.Services.PythonAdapter.Dtos;
+using BoxieHub.Services.BoxieCloud;
 using Microsoft.EntityFrameworkCore;
 
 namespace BoxieHub.Services.Sync;
 
 /// <summary>
 /// Service for orchestrating sync operations.
-/// Coordinates between the database and Python adapter.
+/// Coordinates between the database and BoxieCloud client.
 /// </summary>
 public class SyncJobService : ISyncJobService
 {
     private readonly ApplicationDbContext _dbContext;
-    private readonly IPythonAdapterClient _pythonAdapter;
+    private readonly IBoxieCloudClient _boxieCloudClient;
     private readonly ILogger<SyncJobService> _logger;
+    private readonly IConfiguration _configuration;
 
     public SyncJobService(
         ApplicationDbContext dbContext,
-        IPythonAdapterClient pythonAdapter,
+        IBoxieCloudClient boxieCloudClient,
+        IConfiguration configuration,
         ILogger<SyncJobService> logger)
     {
         _dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
-        _pythonAdapter = pythonAdapter ?? throw new ArgumentNullException(nameof(pythonAdapter));
+        _boxieCloudClient = boxieCloudClient ?? throw new ArgumentNullException(nameof(boxieCloudClient));
+        _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
-    public async Task<SyncJob> ExecuteSyncAsync(int deviceId, int assignmentId, string requestedBy, CancellationToken cancellationToken = default)
+    public async Task<SyncJob> ExecuteSyncAsync(int deviceId, int assignmentId, Stream audioStream, string requestedBy, CancellationToken cancellationToken = default)
     {
+        if (audioStream == null)
+            throw new ArgumentNullException(nameof(audioStream));
+            
         _logger.LogInformation("Starting sync job for Device {DeviceId}, Assignment {AssignmentId}, requested by {User}",
             deviceId, assignmentId, requestedBy);
 
@@ -76,28 +81,29 @@ public class SyncJobService : ISyncJobService
                 throw new InvalidOperationException("Content item has no associated file upload");
             }
 
-            var tracks = new List<SyncTrackDto>
-            {
-                new SyncTrackDto
-                {
-                    Title = assignment.ContentItem.Title ?? "Untitled",
-                    // TODO: Replace with actual base URL from configuration
-                    SourceUrl = $"http://localhost:5000/files/audio/{assignment.ContentItem.UploadId}"
-                }
-            };
+            // Get Tonie credentials from configuration (User Secrets for testing)
+            var username = _configuration["Tonie:Username"] 
+                ?? throw new InvalidOperationException("Tonie:Username not configured");
+            var password = _configuration["Tonie:Password"] 
+                ?? throw new InvalidOperationException("Tonie:Password not configured");
 
-            var syncRequest = new SyncRequestDto
-            {
-                CreativeTonieExternalId = device.DeviceIdentifier,
-                Tracks = tracks
-            };
+            // Get household ID from device
+            var householdId = device.Household?.ExternalId 
+                ?? throw new InvalidOperationException("Device has no associated household");
 
-            // Call Python adapter
-            var syncResponse = await _pythonAdapter.SyncAsync(syncRequest, cancellationToken);
+            // Call BoxieCloud to sync audio using provided stream
+            var syncResult = await _boxieCloudClient.SyncAudioAsync(
+                username,
+                password,
+                householdId,
+                device.DeviceIdentifier,
+                audioStream,
+                assignment.ContentItem.Title ?? "Untitled",
+                cancellationToken);
 
             // Update job with response
-            job.Status = syncResponse.Success ? SyncStatus.Completed : SyncStatus.Failed;
-            job.ErrorMessage = syncResponse.Success ? null : syncResponse.ErrorDetails ?? syncResponse.Message;
+            job.Status = syncResult.Success ? SyncStatus.Completed : SyncStatus.Failed;
+            job.ErrorMessage = syncResult.Success ? null : syncResult.ErrorDetails ?? syncResult.Message;
             job.Completed = DateTimeOffset.UtcNow;
 
             _logger.LogInformation("Sync job {JobId} completed with status {Status}", job.Id, job.Status);

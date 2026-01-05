@@ -367,6 +367,7 @@ FodyWeavers.xsd
 .env.local
 .env.*.local
 *.env
+appsettings.local.json
 services/tonie-adapter/.env
 services/tonie-adapter/.env.local
 

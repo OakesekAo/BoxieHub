@@ -10,6 +10,12 @@ namespace BoxieHub.Models
         public string Name { get; set; } = default!;
 
         public string? Description { get; set; }
+        
+        /// <summary>
+        /// External household ID from Tonie Cloud API
+        /// Used to sync with the Tonie Cloud service
+        /// </summary>
+        public string? ExternalId { get; set; }
 
         private DateTimeOffset _created;
         public DateTimeOffset Created

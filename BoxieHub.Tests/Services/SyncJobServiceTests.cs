@@ -1,8 +1,8 @@
 using BoxieHub.Client.Models.Enums;
-using BoxieHub.Services.PythonAdapter;
-using BoxieHub.Services.PythonAdapter.Dtos;
+using BoxieHub.Services.BoxieCloud;
 using BoxieHub.Services.Sync;
 using BoxieHub.Tests.Fixtures;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Moq;
 using NUnit.Framework;
@@ -16,7 +16,8 @@ namespace BoxieHub.Tests.Services.Sync;
 [TestFixture]
 public class SyncJobServiceTests : TestBase
 {
-    private Mock<IPythonAdapterClient> _mockAdapterClient;
+    private Mock<IBoxieCloudClient> _mockBoxieCloudClient;
+    private Mock<IConfiguration> _mockConfiguration;
     private ISyncJobService _service;
     private ILogger<SyncJobService> _logger;
 
@@ -24,9 +25,24 @@ public class SyncJobServiceTests : TestBase
     public void SetUp()
     {
         base.SetUpDatabase();
-        _mockAdapterClient = new Mock<IPythonAdapterClient>();
+        _mockBoxieCloudClient = new Mock<IBoxieCloudClient>();
+        _mockConfiguration = new Mock<IConfiguration>();
         _logger = new Mock<ILogger<SyncJobService>>().Object;
-        _service = new SyncJobService(DbContext, _mockAdapterClient.Object, _logger);
+        
+        // Setup configuration mock to return test credentials
+        _mockConfiguration.Setup(c => c["Tonie:Username"]).Returns("test@example.com");
+        _mockConfiguration.Setup(c => c["Tonie:Password"]).Returns("testpassword");
+        
+        _service = new SyncJobService(DbContext, _mockBoxieCloudClient.Object, _mockConfiguration.Object, _logger);
+    }
+
+    /// <summary>
+    /// Helper method to create a test audio stream
+    /// </summary>
+    private Stream CreateTestAudioStream()
+    {
+        var bytes = new byte[] { 0x01, 0x02, 0x03, 0x04, 0x05 };
+        return new MemoryStream(bytes);
     }
 
     [Test]
@@ -39,9 +55,16 @@ public class SyncJobServiceTests : TestBase
         var device = CreateTestDevice(household);
         var assignment = CreateTestContentAssignment(household, device, contentItem);
 
-        _mockAdapterClient
-            .Setup(x => x.SyncAsync(It.IsAny<SyncRequestDto>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new SyncResponseDto
+        _mockBoxieCloudClient
+            .Setup(x => x.SyncAudioAsync(
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<Stream>(),
+                It.IsAny<string>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new BoxieHub.Models.BoxieCloud.SyncResultDto
             {
                 Success = true,
                 Message = "Sync successful",
@@ -49,7 +72,8 @@ public class SyncJobServiceTests : TestBase
             });
 
         // Act
-        var job = await _service.ExecuteSyncAsync(device.Id, assignment.Id, "testuser");
+        using var audioStream = CreateTestAudioStream();
+        var job = await _service.ExecuteSyncAsync(device.Id, assignment.Id, audioStream, "testuser");
 
         // Assert
         Assert.That(job, Is.Not.Null);
@@ -60,7 +84,7 @@ public class SyncJobServiceTests : TestBase
     }
 
     [Test]
-    public async Task ExecuteSyncAsync_CallsPythonAdapterWithCorrectPayload()
+    public async Task ExecuteSyncAsync_CallsBoxieCloudWithCorrectParameters()
     {
         // Arrange
         var household = CreateTestHousehold();
@@ -69,11 +93,24 @@ public class SyncJobServiceTests : TestBase
         var device = CreateTestDevice(household, deviceIdentifier: "tonie-xyz");
         var assignment = CreateTestContentAssignment(household, device, contentItem);
 
-        SyncRequestDto capturedRequest = null;
-        _mockAdapterClient
-            .Setup(x => x.SyncAsync(It.IsAny<SyncRequestDto>(), It.IsAny<CancellationToken>()))
-            .Callback<SyncRequestDto, CancellationToken>((req, ct) => capturedRequest = req)
-            .ReturnsAsync(new SyncResponseDto
+        string capturedTonieId = null;
+        string capturedTitle = null;
+        _mockBoxieCloudClient
+            .Setup(x => x.SyncAudioAsync(
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<Stream>(),
+                It.IsAny<string>(),
+                It.IsAny<CancellationToken>()))
+            .Callback<string, string, string, string, Stream, string, CancellationToken>(
+                (user, pass, householdId, tonieId, stream, title, ct) =>
+                {
+                    capturedTonieId = tonieId;
+                    capturedTitle = title;
+                })
+            .ReturnsAsync(new BoxieHub.Models.BoxieCloud.SyncResultDto
             {
                 Success = true,
                 Message = "OK",
@@ -81,13 +118,12 @@ public class SyncJobServiceTests : TestBase
             });
 
         // Act
-        await _service.ExecuteSyncAsync(device.Id, assignment.Id, "testuser");
+        using var audioStream = CreateTestAudioStream();
+        await _service.ExecuteSyncAsync(device.Id, assignment.Id, audioStream, "testuser");
 
         // Assert
-        Assert.That(capturedRequest, Is.Not.Null);
-        Assert.That(capturedRequest.CreativeTonieExternalId, Is.EqualTo("tonie-xyz"));
-        Assert.That(capturedRequest.Tracks, Is.Not.Empty);
-        Assert.That(capturedRequest.Tracks.First().Title, Is.EqualTo("Test Story"));
+        Assert.That(capturedTonieId, Is.EqualTo("tonie-xyz"));
+        Assert.That(capturedTitle, Is.EqualTo("Test Story"));
     }
 
     [Test]
@@ -100,9 +136,16 @@ public class SyncJobServiceTests : TestBase
         var device = CreateTestDevice(household);
         var assignment = CreateTestContentAssignment(household, device, contentItem);
 
-        _mockAdapterClient
-            .Setup(x => x.SyncAsync(It.IsAny<SyncRequestDto>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new SyncResponseDto
+        _mockBoxieCloudClient
+            .Setup(x => x.SyncAudioAsync(
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<Stream>(),
+                It.IsAny<string>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new BoxieHub.Models.BoxieCloud.SyncResultDto
             {
                 Success = false,
                 Message = "Sync failed",
@@ -111,7 +154,8 @@ public class SyncJobServiceTests : TestBase
             });
 
         // Act
-        var job = await _service.ExecuteSyncAsync(device.Id, assignment.Id, "testuser");
+        using var audioStream = CreateTestAudioStream();
+        var job = await _service.ExecuteSyncAsync(device.Id, assignment.Id, audioStream, "testuser");
 
         // Assert
         Assert.That(job.Status, Is.EqualTo(SyncStatus.Failed));
@@ -128,12 +172,20 @@ public class SyncJobServiceTests : TestBase
         var device = CreateTestDevice(household);
         var assignment = CreateTestContentAssignment(household, device, contentItem);
 
-        _mockAdapterClient
-            .Setup(x => x.SyncAsync(It.IsAny<SyncRequestDto>(), It.IsAny<CancellationToken>()))
+        _mockBoxieCloudClient
+            .Setup(x => x.SyncAudioAsync(
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<Stream>(),
+                It.IsAny<string>(),
+                It.IsAny<CancellationToken>()))
             .ThrowsAsync(new HttpRequestException("Connection timeout"));
 
         // Act
-        var job = await _service.ExecuteSyncAsync(device.Id, assignment.Id, "testuser");
+        using var audioStream = CreateTestAudioStream();
+        var job = await _service.ExecuteSyncAsync(device.Id, assignment.Id, audioStream, "testuser");
 
         // Assert
         Assert.That(job.Status, Is.EqualTo(SyncStatus.Failed));
@@ -148,8 +200,9 @@ public class SyncJobServiceTests : TestBase
         var invalidAssignmentId = 99999;
 
         // Act & Assert
+        using var audioStream = CreateTestAudioStream();
         var ex = Assert.ThrowsAsync<ArgumentException>(() => 
-            _service.ExecuteSyncAsync(invalidDeviceId, invalidAssignmentId, "testuser"));
+            _service.ExecuteSyncAsync(invalidDeviceId, invalidAssignmentId, audioStream, "testuser"));
         Assert.That(ex.Message, Does.Contain("Device"));
     }
 
@@ -162,8 +215,9 @@ public class SyncJobServiceTests : TestBase
         var invalidAssignmentId = 99999;
 
         // Act & Assert
+        using var audioStream = CreateTestAudioStream();
         var ex = Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.ExecuteSyncAsync(device.Id, invalidAssignmentId, "testuser"));
+            _service.ExecuteSyncAsync(device.Id, invalidAssignmentId, audioStream, "testuser"));
         Assert.That(ex.Message, Does.Contain("Assignment"));
     }
 
@@ -177,9 +231,16 @@ public class SyncJobServiceTests : TestBase
         var device = CreateTestDevice(household);
         var assignment = CreateTestContentAssignment(household, device, contentItem);
 
-        _mockAdapterClient
-            .Setup(x => x.SyncAsync(It.IsAny<SyncRequestDto>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new SyncResponseDto
+        _mockBoxieCloudClient
+            .Setup(x => x.SyncAudioAsync(
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<Stream>(),
+                It.IsAny<string>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new BoxieHub.Models.BoxieCloud.SyncResultDto
             {
                 Success = true,
                 Message = "OK",
@@ -189,7 +250,8 @@ public class SyncJobServiceTests : TestBase
         var beforeExecution = DateTimeOffset.UtcNow;
 
         // Act
-        var job = await _service.ExecuteSyncAsync(device.Id, assignment.Id, "testuser");
+        using var audioStream = CreateTestAudioStream();
+        var job = await _service.ExecuteSyncAsync(device.Id, assignment.Id, audioStream, "testuser");
 
         var afterExecution = DateTimeOffset.UtcNow;
 
@@ -313,12 +375,20 @@ public class SyncJobServiceTests : TestBase
         var device = CreateTestDevice(household);
         var assignment = CreateTestContentAssignment(household, device, contentItem);
 
-        _mockAdapterClient
-            .Setup(x => x.SyncAsync(It.IsAny<SyncRequestDto>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new SyncResponseDto { Success = true, Message = "OK", TracksProcessed = 1 });
+        _mockBoxieCloudClient
+            .Setup(x => x.SyncAudioAsync(
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<Stream>(),
+                It.IsAny<string>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new BoxieHub.Models.BoxieCloud.SyncResultDto { Success = true, Message = "OK", TracksProcessed = 1 });
 
         // Act
-        var job = await _service.ExecuteSyncAsync(device.Id, assignment.Id, "testuser");
+        using var audioStream = CreateTestAudioStream();
+        var job = await _service.ExecuteSyncAsync(device.Id, assignment.Id, audioStream, "testuser");
 
         // Assert - Verify it was actually saved to DB
         var savedJob = await _service.GetJobAsync(job.Id);

@@ -22,12 +22,8 @@ builder.Services.AddScoped<AuthenticationStateProvider, PersistingRevalidatingAu
 builder.Services.AddControllers();
 builder.Services.AddHttpClient();
 
-// Register C# Tonie Cloud services (replaces Python adapter)
-builder.Services.AddTonieCloudServices();
-
-// Optionally keep Python adapter for now (comment out to fully switch to C#)
-// var pythonAdapterUrl = builder.Configuration.GetValue<string>("PythonAdapter:BaseUrl") ?? "http://localhost:8000";
-// builder.Services.AddPythonAdapterServices(pythonAdapterUrl);
+// Register BoxieCloud services (C# Tonie Cloud implementation)
+builder.Services.AddBoxieCloudServices();
 
 builder.Services.AddOutputCache();
 

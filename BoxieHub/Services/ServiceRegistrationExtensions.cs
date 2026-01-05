@@ -1,56 +1,35 @@
-using BoxieHub.Services.PythonAdapter;
+using BoxieHub.Services.BoxieCloud;
 using BoxieHub.Services.Sync;
-using BoxieHub.TonieCloud.Services;
 
 namespace BoxieHub.Services;
 
 /// <summary>
-/// Extension methods for registering Python adapter and sync services in the DI container.
+/// Extension methods for registering BoxieCloud services in the DI container.
 /// </summary>
 public static class ServiceRegistrationExtensions
 {
     /// <summary>
-    /// Registers Python adapter and sync services with the DI container.
-    /// </summary>
-    /// <param name="services">The service collection.</param>
-    /// <param name="pythonAdapterBaseUrl">Base URL of the Python adapter service (e.g., http://localhost:8000).</param>
-    /// <returns>The service collection for chaining.</returns>
-    public static IServiceCollection AddPythonAdapterServices(
-        this IServiceCollection services,
-        string pythonAdapterBaseUrl)
-    {
-        if (string.IsNullOrWhiteSpace(pythonAdapterBaseUrl))
-            throw new ArgumentException("Python adapter base URL cannot be empty", nameof(pythonAdapterBaseUrl));
-
-        // Register HttpClient for Python adapter with base address
-        services.AddHttpClient<IPythonAdapterClient, PythonAdapterClient>(client =>
-        {
-            client.BaseAddress = new Uri(pythonAdapterBaseUrl);
-            client.Timeout = TimeSpan.FromSeconds(30);
-        });
-
-        // Register sync job service
-        services.AddScoped<ISyncJobService, SyncJobService>();
-
-        return services;
-    }
-    
-    /// <summary>
-    /// Registers C# Tonie Cloud services with the DI container.
-    /// This is the new implementation that replaces the Python adapter.
+    /// Registers BoxieCloud services with the DI container.
+    /// Includes authentication, Tonie Cloud API client, and S3 storage.
     /// </summary>
     /// <param name="services">The service collection.</param>
     /// <returns>The service collection for chaining.</returns>
-    public static IServiceCollection AddTonieCloudServices(this IServiceCollection services)
+    public static IServiceCollection AddBoxieCloudServices(this IServiceCollection services)
     {
         // Add in-memory cache for token caching
         services.AddMemoryCache();
         
-        // Register auth service with HttpClient
-        services.AddHttpClient<ITonieAuthService, TonieAuthService>();
+        // Register auth service with HttpClient (Scoped for per-request isolation)
+        services.AddHttpClient<IBoxieAuthService, BoxieAuthService>();
+        services.AddScoped<IBoxieAuthService, BoxieAuthService>();
         
-        // Register Tonie Cloud client with HttpClient
-        services.AddHttpClient<ITonieCloudClient, TonieCloudClient>();
+        // Register S3 storage service with HttpClient (Scoped)
+        services.AddHttpClient<IS3StorageService, S3StorageService>();
+        services.AddScoped<IS3StorageService, S3StorageService>();
+        
+        // Register BoxieCloud client with HttpClient (Scoped)
+        services.AddHttpClient<IBoxieCloudClient, BoxieCloudClient>();
+        services.AddScoped<IBoxieCloudClient, BoxieCloudClient>();
         
         // Register sync job service
         services.AddScoped<ISyncJobService, SyncJobService>();

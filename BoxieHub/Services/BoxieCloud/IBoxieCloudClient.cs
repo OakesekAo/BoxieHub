@@ -1,12 +1,12 @@
-using BoxieHub.TonieCloud.Models;
+using BoxieHub.Models.BoxieCloud;
 
-namespace BoxieHub.TonieCloud.Services;
+namespace BoxieHub.Services.BoxieCloud;
 
 /// <summary>
 /// Client for Tonie Cloud API
 /// Provides methods to interact with Tonie Cloud services
 /// </summary>
-public interface ITonieCloudClient
+public interface IBoxieCloudClient
 {
     /// <summary>
     /// Get all households for authenticated user

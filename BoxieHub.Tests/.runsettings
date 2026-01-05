@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RunSettings>
+  <RunConfiguration>
+    <EnvironmentVariables>
+      <!-- Set these to your actual credentials, or use the secrets.json approach -->
+      <!-- Visual Studio Test Explorer doesn't always load User Secrets correctly -->
+      <!-- Uncomment and fill in your credentials if tests fail in VS Test Explorer: -->
+      <!-- <TONIE_USERNAME>your_email@example.com</TONIE_USERNAME> -->
+      <!-- <TONIE_PASSWORD>your_password</TONIE_PASSWORD> -->
+    </EnvironmentVariables>
+  </RunConfiguration>
+  <LoggerRunSettings>
+    <Loggers>
+      <Logger friendlyName="console" enabled="True">
+        <Configuration>
+          <Verbosity>detailed</Verbosity>
+        </Configuration>
+      </Logger>
+    </Loggers>
+  </LoggerRunSettings>
+</RunSettings>

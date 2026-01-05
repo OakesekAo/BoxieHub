@@ -1,6 +1,6 @@
 using System.Text.Json.Serialization;
 
-namespace BoxieHub.TonieCloud.Models;
+namespace BoxieHub.Models.BoxieCloud;
 
 /// <summary>
 /// OAuth token response from Tonie Cloud

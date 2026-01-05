@@ -34,11 +34,12 @@ public abstract class TestBase
     /// <summary>
     /// Creates a test household with a given name.
     /// </summary>
-    protected Household CreateTestHousehold(string name = "Test Household")
+    protected Household CreateTestHousehold(string name = "Test Household", string? externalId = null)
     {
         var household = new Household
         {
             Name = name,
+            ExternalId = externalId ?? $"test-household-{Guid.NewGuid()}",
             Created = DateTimeOffset.UtcNow
         };
         DbContext.Households.Add(household);

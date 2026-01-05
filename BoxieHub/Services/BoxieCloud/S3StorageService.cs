@@ -1,6 +1,4 @@
-using Microsoft.Extensions.Logging;
-
-namespace BoxieHub.TonieCloud.Services;
+namespace BoxieHub.Services.BoxieCloud;
 
 /// <summary>
 /// S3-compatible storage service implementation

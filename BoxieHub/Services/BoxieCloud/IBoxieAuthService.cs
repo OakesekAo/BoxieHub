@@ -1,10 +1,10 @@
-namespace BoxieHub.TonieCloud.Services;
+namespace BoxieHub.Services.BoxieCloud;
 
 /// <summary>
 /// Service interface for Tonie Cloud authentication
 /// Handles OAuth token management and caching
 /// </summary>
-public interface ITonieAuthService
+public interface IBoxieAuthService
 {
     /// <summary>
     /// Get access token for user (from cache or new request)
