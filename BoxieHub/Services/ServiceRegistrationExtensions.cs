@@ -19,6 +19,9 @@ public static class ServiceRegistrationExtensions
         // Add in-memory cache for token caching
         services.AddMemoryCache();
         
+        // Register credential encryption service (Singleton - stateless, uses config key)
+        services.AddSingleton<ICredentialEncryptionService, CredentialEncryptionService>();
+        
         // Register auth service with HttpClient (Scoped for per-request isolation)
         services.AddHttpClient<IBoxieAuthService, BoxieAuthService>();
         services.AddScoped<IBoxieAuthService, BoxieAuthService>();
@@ -37,4 +40,5 @@ public static class ServiceRegistrationExtensions
         return services;
     }
 }
+
 
