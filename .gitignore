@@ -361,3 +361,15 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+
+# Environment variables and secrets
+.env
+.env.local
+.env.*.local
+*.env
+appsettings.local.json
+services/tonie-adapter/.env
+services/tonie-adapter/.env.local
+
+# Python adapter - removed from project
+services/tonie-adapter/

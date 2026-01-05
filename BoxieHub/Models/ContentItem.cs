@@ -8,7 +8,7 @@ namespace BoxieHub.Models
         public int Id { get; set; }
 
         [Required]
-        public Guid HouseholdId { get; set; }
+        public int HouseholdId { get; set; }
         public Household Household { get; set; } = default!;
 
         [Required]

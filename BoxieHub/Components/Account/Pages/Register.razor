@@ -30,15 +30,15 @@
             <ValidationSummary class="text-danger" role="alert" />
             
             <div class="form-floating mb-3">
-                <InputText id="firstName" @bind-Value="Input.FirstName" class="form-control" autocomplete="firstName" aria-required="true" placeholder="First Name" />
-                <label for="firstName">First Name</label>
-                <ValidationMessage For="() => Input.FirstName" class="text-danger" />
+                <InputText id="name" @bind-Value="Input.Name" class="form-control" autocomplete="name" aria-required="true" placeholder="Name" />
+                <label for="name">Name</label>
+                <ValidationMessage For="() => Input.Name" class="text-danger" />
             </div>
-            <div class="form-floating mb-3">
+@*             <div class="form-floating mb-3">
                 <InputText id="lastName" @bind-Value="Input.LastName" class="form-control" autocomplete="lastName" aria-required="true" placeholder="Last Name" />
                 <label for="lasttName">Last Name</label>
                 <ValidationMessage For="() => Input.LastName" class="text-danger" />
-            </div>
+            </div> *@
             <div class="form-floating mb-3">
                 <InputText @bind-Value="Input.Email" class="form-control" autocomplete="username" aria-required="true" placeholder="name@example.com" />
                 <label for="email">Email</label>
@@ -55,7 +55,7 @@
                 <ValidationMessage For="() => Input.ConfirmPassword" class="text-danger" />
             </div>
 
-            <div class="mb-3 row">
+@*             <div class="mb-3 row">
                    <div class="col-lg-4">
                        <img src="@ImageHelper.DefaultProfilePictureUrl" class="img-fluid" id="profilePicPreview"/>
                    </div> 
@@ -64,7 +64,7 @@
                        <input type="file" class="form-control" name="Input.ProfilePicture" accept=".jpg, .jpeg, .png, .svg, .gif"
                            onchange="document.getElementById('profilePicPreview').src = window.URL.createObjectURL(this.files[0])"/>
                    </div>
-            </div>
+            </div> *@
 
             <button type="submit" class="w-100 btn btn-lg btn-primary">Register</button>
         </EditForm>
@@ -93,8 +93,8 @@
     {
         var user = CreateUser();
 
-        user.FirstName = Input.FirstName;
-        user.LastName = Input.LastName;
+        user.Name = Input.Name;
+        //user.LastName = Input.LastName;
 
         await UserStore.SetUserNameAsync(user, Input.Email, CancellationToken.None);
         var emailStore = GetEmailStore();
@@ -109,24 +109,24 @@
 
         Logger.LogInformation("User created a new account with password.");
 
-        if(Input.ProfilePicture is not null)
-        {
-            try
-            {
-                ImageUpload profilePic = await ImageHelper.GetImageUploadAsync(Input.ProfilePicture);
-                user.ProfilePicture = profilePic;
+        // if(Input.ProfilePicture is not null)
+        // {
+        //     try
+        //     {
+        //         ImageUpload profilePic = await ImageHelper.GetImageUploadAsync(Input.ProfilePicture);
+        //         user.ProfilePicture = profilePic;
 
-                context.Images.Add(profilePic);
-                context.Users.Update(user);
+        //         context.Images.Add(profilePic);
+        //         context.Users.Update(user);
 
-                await context.SaveChangesAsync();
-            }
-            catch (Exception ex)
-            {
-                //Regiser the user anyway and let them upload a profile picture later
-                Console.WriteLine(ex.ToString());
-            }
-        }
+        //         await context.SaveChangesAsync();
+        //     }
+        //     catch (Exception ex)
+        //     {
+        //         //Regiser the user anyway and let them upload a profile picture later
+        //         Console.WriteLine(ex.ToString());
+        //     }
+        // }
 
         var userId = await UserManager.GetUserIdAsync(user);
         var code = await UserManager.GenerateEmailConfirmationTokenAsync(user);
@@ -173,9 +173,9 @@
     private sealed class InputModel
     {
         [Required]
-        public string? FirstName { get; set; }
-        [Required]
-        public string? LastName { get; set; }
+        public string? Name { get; set; }
+        // [Required]
+        // public string? LastName { get; set; }
 
         [Required]
         [EmailAddress]
@@ -193,6 +193,6 @@
         [Compare("Password", ErrorMessage = "The password and confirmation password do not match.")]
         public string ConfirmPassword { get; set; } = "";
 
-        public IFormFile? ProfilePicture { get; set; }
+        //public IFormFile? ProfilePicture { get; set; }
     }
 }

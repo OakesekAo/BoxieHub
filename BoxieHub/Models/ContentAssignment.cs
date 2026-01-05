@@ -9,11 +9,11 @@ namespace BoxieHub.Models
         public int Id { get; set; }
 
         [Required]
-        public Guid HouseholdId { get; set; }
+        public int HouseholdId { get; set; }
         public Household Household { get; set; } = default!;
 
         [Required]
-        public Guid ContentItemId { get; set; }
+        public int ContentItemId { get; set; }
         public ContentItem ContentItem { get; set; } = default!;
 
         public AssignmentTarget TargetType { get; set; } = AssignmentTarget.Device;

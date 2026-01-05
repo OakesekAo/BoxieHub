@@ -14,8 +14,8 @@ namespace BoxieHub.Components.Account
 
             List<Claim> customClaims =
                 [
-                new Claim("FirstName", user.FirstName!),
-                new Claim("LastName", user.LastName!)
+                new Claim("Name", user.Name!),
+                //new Claim("LastName", user.LastName!)
                 ];
 
             identity.AddClaims(customClaims);

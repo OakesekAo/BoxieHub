@@ -1,8 +1,8 @@
-using BoxieHub.Client.Pages;
 using BoxieHub.Components;
 using BoxieHub.Components.Account;
 using BoxieHub.Data;
 using BoxieHub.Models;
+using BoxieHub.Services;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -21,6 +21,9 @@ builder.Services.AddScoped<AuthenticationStateProvider, PersistingRevalidatingAu
 
 builder.Services.AddControllers();
 builder.Services.AddHttpClient();
+
+// Register BoxieCloud services (C# Tonie Cloud implementation)
+builder.Services.AddBoxieCloudServices();
 
 builder.Services.AddOutputCache();
 
