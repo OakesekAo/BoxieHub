@@ -81,35 +81,49 @@ public class TonieService : ITonieService
 
     public async Task<List<CreativeTonieDto>> GetUserCreativeTonieAsync(string userId, CancellationToken ct = default)
     {
+        _logger.LogDebug("Starting GetUserCreativeTonieAsync for user {UserId}", userId);
+        
         var credentials = await GetUserCredentialsAsync(userId);
+        _logger.LogDebug("Retrieved credentials for {Username}", credentials.Username);
+        
         var allTonies = new List<CreativeTonieDto>();
 
         try
         {
             // Get households
+            _logger.LogDebug("Fetching households for {Username}", credentials.Username);
             var households = await _boxieCloudClient.GetHouseholdsAsync(
                 credentials.Username, 
                 credentials.Password, 
                 ct);
+            _logger.LogInformation("Retrieved {Count} household(s) for user {UserId}", households.Count, userId);
 
             // Get Tonies from all households
             foreach (var household in households)
             {
+                _logger.LogDebug("Fetching Tonies for household {HouseholdId} ({HouseholdName})", 
+                    household.Id, household.Name);
+                
                 var tonies = await _boxieCloudClient.GetCreativeToniesByHouseholdAsync(
                     credentials.Username,
                     credentials.Password,
                     household.Id,
                     ct);
+                
+                _logger.LogDebug("Retrieved {Count} Tonies from household {HouseholdId}", 
+                    tonies.Count, household.Id);
 
                 allTonies.AddRange(tonies);
             }
 
-            _logger.LogInformation("Retrieved {Count} Creative Tonies for user {UserId}", allTonies.Count, userId);
+            _logger.LogInformation("Retrieved {TotalCount} Creative Tonies across {HouseholdCount} household(s) for user {UserId}", 
+                allTonies.Count, households.Count, userId);
             return allTonies;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error getting Creative Tonies for user {UserId}", userId);
+            _logger.LogError(ex, "Error getting Creative Tonies for user {UserId}. Error: {ErrorMessage}", 
+                userId, ex.Message);
             throw;
         }
     }
