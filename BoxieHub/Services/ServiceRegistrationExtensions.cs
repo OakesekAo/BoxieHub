@@ -37,6 +37,9 @@ public static class ServiceRegistrationExtensions
         // Register sync job service
         services.AddScoped<ISyncJobService, SyncJobService>();
         
+        // Register Tonie service (high-level business logic)
+        services.AddScoped<ITonieService, TonieService>();
+        
         return services;
     }
 }

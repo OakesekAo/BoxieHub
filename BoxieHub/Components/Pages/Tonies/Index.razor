@@ -1,7 +1,12 @@
 @rendermode InteractiveServer
 @page "/tonies"
 @using BoxieHub.Components.Pages.Tonies.Components
+@using BoxieHub.Services
+@using System.Security.Claims
 @using Microsoft.AspNetCore.Authorization
+@inject ITonieService TonieService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject ILogger<Index> Logger
 @attribute [Authorize]
 
 <PageTitle>My Creative Tonies - BoxieHub</PageTitle>
@@ -9,9 +14,14 @@
 <div class="container mt-4">
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h2><i class="bi bi-music-note-list"></i> My Creative Tonies</h2>
-        <a href="/tonies/add-account" class="btn btn-primary">
-            <i class="bi bi-link-45deg"></i> Add Tonie Account
-        </a>
+        <div>
+            <button class="btn btn-outline-secondary me-2" @onclick="RefreshData" disabled="@isLoading">
+                <i class="bi bi-arrow-clockwise"></i> Refresh
+            </button>
+            <a href="/tonies/add-account" class="btn btn-primary">
+                <i class="bi bi-link-45deg"></i> Add Tonie Account
+            </a>
+        </div>
     </div>
 
     <div class="row">
@@ -25,41 +35,214 @@
                     <h5 class="card-title">
                         <i class="bi bi-music-note-beamed"></i> Quick Stats
                     </h5>
-                    <div class="row text-center mt-4">
-                        <div class="col-4">
-                            <div class="stat-box">
-                                <i class="bi bi-collection-play" style="font-size: 2rem; color: #0d6efd;"></i>
-                                <h3 class="mt-2 mb-0">0</h3>
-                                <small class="text-muted">Tonies</small>
+                    @if (isLoading)
+                    {
+                        <div class="text-center py-4">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            <p class="mt-2 text-muted">Loading your Tonies...</p>
+                        </div>
+                    }
+                    else if (stats != null)
+                    {
+                        <div class="row text-center mt-4">
+                            <div class="col-4">
+                                <div class="stat-box">
+                                    <i class="bi bi-collection-play" style="font-size: 2rem; color: #0d6efd;"></i>
+                                    <h3 class="mt-2 mb-0">@stats.TotalTonies</h3>
+                                    <small class="text-muted">Tonies</small>
+                                </div>
+                            </div>
+                            <div class="col-4">
+                                <div class="stat-box">
+                                    <i class="bi bi-soundwave" style="font-size: 2rem; color: #198754;"></i>
+                                    <h3 class="mt-2 mb-0">@stats.TotalChapters</h3>
+                                    <small class="text-muted">Chapters</small>
+                                </div>
+                            </div>
+                            <div class="col-4">
+                                <div class="stat-box">
+                                    <i class="bi bi-clock-history" style="font-size: 2rem; color: #ffc107;"></i>
+                                    <h3 class="mt-2 mb-0">@stats.FormattedDuration</h3>
+                                    <small class="text-muted">Content</small>
+                                </div>
                             </div>
                         </div>
-                        <div class="col-4">
-                            <div class="stat-box">
-                                <i class="bi bi-soundwave" style="font-size: 2rem; color: #198754;"></i>
-                                <h3 class="mt-2 mb-0">0</h3>
-                                <small class="text-muted">Chapters</small>
-                            </div>
+                    }
+                    else
+                    {
+                        <div class="text-center py-4 text-muted">
+                            <p>No statistics available</p>
                         </div>
-                        <div class="col-4">
-                            <div class="stat-box">
-                                <i class="bi bi-clock-history" style="font-size: 2rem; color: #ffc107;"></i>
-                                <h3 class="mt-2 mb-0">0h</h3>
-                                <small class="text-muted">Content</small>
-                            </div>
-                        </div>
-                    </div>
+                    }
                 </div>
             </div>
         </div>
     </div>
 
-    <div class="alert alert-warning">
-        <i class="bi bi-exclamation-triangle"></i>
-        <strong>Note:</strong> Creative Tonies management coming soon! (User Story 2)
-    </div>
+    @if (!string.IsNullOrEmpty(errorMessage))
+    {
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            <i class="bi bi-exclamation-triangle-fill"></i> @errorMessage
+            <button type="button" class="btn-close" @onclick="() => errorMessage = null"></button>
+        </div>
+    }
+
+    @if (isLoading)
+    {
+        <div class="text-center py-5">
+            <div class="spinner-border spinner-border-lg text-primary" role="status">
+                <span class="visually-hidden">Loading Tonies...</span>
+            </div>
+        </div>
+    }
+    else if (tonies != null && tonies.Any())
+    {
+        <div class="row">
+            @foreach (var tonie in tonies)
+            {
+                <div class="col-lg-3 col-md-4 col-sm-6 mb-4">
+                    <div class="card h-100 shadow-sm hover-shadow">
+                        <img src="@tonie.ImageUrl" class="card-img-top" alt="@tonie.Name" style="height: 200px; object-fit: cover;">
+                        <div class="card-body">
+                            <h6 class="card-title">@tonie.Name</h6>
+                            <div class="mb-2">
+                                <small class="text-muted">
+                                    <i class="bi bi-music-note"></i> @tonie.ChaptersPresent chapters
+                                </small>
+                            </div>
+                            <div class="mb-2">
+                                <small class="text-muted">
+                                    <i class="bi bi-clock"></i> @FormatDuration(tonie.SecondsPresent)
+                                </small>
+                            </div>
+                            <div class="progress mb-2" style="height: 8px;">
+                                <div class="progress-bar" 
+                                     role="progressbar" 
+                                     style="width: @GetStoragePercentage(tonie)%" 
+                                     aria-valuenow="@GetStoragePercentage(tonie)" 
+                                     aria-valuemin="0" 
+                                     aria-valuemax="100"></div>
+                            </div>
+                            <small class="text-muted">@GetStoragePercentage(tonie)% used</small>
+                        </div>
+                        <div class="card-footer bg-white border-top-0">
+                            <a href="/tonies/@tonie.HouseholdId/@tonie.Id" class="btn btn-sm btn-primary w-100">
+                                <i class="bi bi-eye"></i> View Details
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+    else if (!isLoading)
+    {
+        <div class="alert alert-info">
+            <h5><i class="bi bi-info-circle"></i> No Tonies Found</h5>
+            <p>
+                It looks like you don't have any Creative Tonies yet, or they couldn't be loaded.
+            </p>
+            @if (string.IsNullOrEmpty(errorMessage))
+            {
+                <button class="btn btn-primary" @onclick="RefreshData">
+                    <i class="bi bi-arrow-clockwise"></i> Try Again
+                </button>
+            }
+        </div>
+    }
 </div>
 
+<style>
+    .hover-shadow {
+        transition: box-shadow 0.3s ease;
+    }
+
+    .hover-shadow:hover {
+        box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15) !important;
+        cursor: pointer;
+    }
+
+    .stat-box {
+        padding: 1rem;
+    }
+</style>
+
 @code {
-    // Future: Load Tonies and stats here
+    private List<BoxieHub.Models.BoxieCloud.CreativeTonieDto>? tonies;
+    private TonieStatsViewModel? stats;
+    private bool isLoading = true;
+    private string? errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        isLoading = true;
+        errorMessage = null;
+        
+        try
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var userId = authState.User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+            if (string.IsNullOrEmpty(userId))
+            {
+                errorMessage = "User not authenticated";
+                return;
+            }
+
+            // Load Tonies and stats in parallel
+            var toniesTask = TonieService.GetUserCreativeTonieAsync(userId);
+            var statsTask = TonieService.GetUserStatsAsync(userId);
+
+            await Task.WhenAll(toniesTask, statsTask);
+
+            tonies = await toniesTask;
+            stats = await statsTask;
+
+            Logger.LogInformation("Loaded {Count} Tonies for user {UserId}", tonies.Count, userId);
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("No default Tonie Cloud account"))
+        {
+            errorMessage = "Please add a Tonie Cloud account first to view your Tonies.";
+            Logger.LogWarning("User has no default Tonie account configured");
+        }
+        catch (Exception ex)
+        {
+            errorMessage = "Failed to load your Tonies. Please try again.";
+            Logger.LogError(ex, "Error loading Tonies");
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task RefreshData()
+    {
+        await LoadData();
+    }
+
+    private string FormatDuration(float seconds)
+    {
+        var timeSpan = TimeSpan.FromSeconds(seconds);
+        if (timeSpan.TotalHours >= 1)
+        {
+            return $"{(int)timeSpan.TotalHours}h {timeSpan.Minutes}m";
+        }
+        return $"{timeSpan.Minutes}m";
+    }
+
+    private int GetStoragePercentage(BoxieHub.Models.BoxieCloud.CreativeTonieDto tonie)
+    {
+        var total = tonie.SecondsPresent + tonie.SecondsRemaining;
+        return total > 0 ? (int)((tonie.SecondsPresent / total) * 100) : 0;
+    }
 }
+
 
