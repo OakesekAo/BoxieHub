@@ -15,50 +15,31 @@
                         <span>Home</span>
                     </NavLink>
                 </li>
-                <li class="nav-item">
-                    <NavLink class="nav-link" href="/counter">
-                        <i class="bi bi-stopwatch"></i>
-                        <span>Counter</span>
-                    </NavLink>
-                </li>
-                <li class="nav-item">
-                    <NavLink class="nav-link" href="/weather">
-                        <i class="bi bi-cloud"></i>
-                        <span>Weather</span>
-                    </NavLink>
-                </li>
+
+
+                <AuthorizeView>
+                    <Authorized>
+                        <div class="nav-item">
+                            <NavLink class="nav-link" href="tonies">
+                                <span class="bi bi-music-note-list" aria-hidden="true"></span> My Tonies
+                            </NavLink>
+                        </div>
+                        <div class="nav-item">
+                            <NavLink class="nav-link" href="tonies/add-account">
+                                <span class="bi bi-link-45deg-nav-menu" aria-hidden="true"></span> Add Tonie Account
+                            </NavLink>
+                        </div>
+
+                    </Authorized>
+                </AuthorizeView>
+
                 <li class="nav-item">
                     <NavLink class="nav-link" href="/themes">
                         <i class="bi bi-palette"></i>
                         <span>Themes</span>
                     </NavLink>
                 </li>
-                <li class="nav-item dropdown">
-                    <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown">
-                        <i class="bi bi-stack"></i>
-                        <span>Dropdown</span>
-                    </a>
-                    <ul class="dropdown-menu text-nowrap px-2 m-2">
-                        <li class="nav-item">
-                            <NavLink class="nav-link" href="#">
-                                <i class="bi bi-person-fill"></i>
-                                <span>Dropdown Link 1</span>
-                            </NavLink>
-                        </li>
-                        <li class="nav-item">
-                            <NavLink class="nav-link" href="#">
-                                <i class="bi bi-archive"></i>
-                                <span>Dropdown Link 2</span>
-                            </NavLink>
-                        </li>
-                        <li class="nav-item">
-                            <NavLink class="nav-link" href="#">
-                                <i class="bi bi-box-arrow-in-right"></i>
-                                <span>Dropdown Link 3</span>
-                            </NavLink>
-                        </li>
-                    </ul>
-                </li>
+
             </ul>
             <ul class="navbar-nav ms-auto mb-2 mb-lg-0">
                 <li class="nav-item dropdown">

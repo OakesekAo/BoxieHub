@@ -1,3 +1,5 @@
+
+using Microsoft.AspNetCore.DataProtection;
 namespace BoxieHub.Services;
 
 /// <summary>
@@ -6,16 +8,13 @@ namespace BoxieHub.Services;
 public interface ICredentialEncryptionService
 {
     /// <summary>
-    /// Encrypts plain text using AES encryption
+    /// Encrypts plain text password for storage
+    /// Uses Data Protection API (same as Identity cookies/tokens)
     /// </summary>
-    /// <param name="plaintext">The text to encrypt</param>
-    /// <returns>Base64 encoded encrypted string</returns>
-    string Encrypt(string plaintext);
-    
+    string Protect(string plaintext);
+
     /// <summary>
-    /// Decrypts encrypted text back to plain text
+    /// Decrypts protected password for API authentication
     /// </summary>
-    /// <param name="ciphertext">Base64 encoded encrypted string</param>
-    /// <returns>Decrypted plain text</returns>
-    string Decrypt(string ciphertext);
+    string Unprotect(string protectedData);
 }
