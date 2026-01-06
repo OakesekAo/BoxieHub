@@ -4,6 +4,7 @@ using BoxieHub.Data;
 using BoxieHub.Models;
 using BoxieHub.Services;
 using Microsoft.AspNetCore.Components.Authorization;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 
@@ -18,6 +19,17 @@ builder.Services.AddCascadingAuthenticationState();
 builder.Services.AddScoped<IdentityUserAccessor>();
 builder.Services.AddScoped<IdentityRedirectManager>();
 builder.Services.AddScoped<AuthenticationStateProvider, PersistingRevalidatingAuthenticationStateProvider>();
+// Add Data Protection (same as Identity uses)
+builder.Services.AddDataProtection()
+    .SetApplicationName("BoxieHub")
+    .PersistKeysToFileSystem(new DirectoryInfo(Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "BoxieHub",
+        "DataProtectionKeys")));
+
+// Register credential encryption service
+builder.Services.AddScoped<ICredentialEncryptionService, CredentialEncryptionService>();
+builder.Services.AddScoped<ITonieCredentialService, TonieCredentialService>();
 
 builder.Services.AddControllers();
 builder.Services.AddHttpClient();

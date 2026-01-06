@@ -1,0 +1,65 @@
+@rendermode InteractiveServer
+@page "/tonies"
+@using BoxieHub.Components.Pages.Tonies.Components
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize]
+
+<PageTitle>My Creative Tonies - BoxieHub</PageTitle>
+
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2><i class="bi bi-music-note-list"></i> My Creative Tonies</h2>
+        <a href="/tonies/add-account" class="btn btn-primary">
+            <i class="bi bi-link-45deg"></i> Add Tonie Account
+        </a>
+    </div>
+
+    <div class="row">
+        <div class="col-lg-4 col-md-6 mb-4">
+            <LinkedAccountsSummary />
+        </div>
+        
+        <div class="col-lg-8 col-md-6 mb-4">
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    <h5 class="card-title">
+                        <i class="bi bi-music-note-beamed"></i> Quick Stats
+                    </h5>
+                    <div class="row text-center mt-4">
+                        <div class="col-4">
+                            <div class="stat-box">
+                                <i class="bi bi-collection-play" style="font-size: 2rem; color: #0d6efd;"></i>
+                                <h3 class="mt-2 mb-0">0</h3>
+                                <small class="text-muted">Tonies</small>
+                            </div>
+                        </div>
+                        <div class="col-4">
+                            <div class="stat-box">
+                                <i class="bi bi-soundwave" style="font-size: 2rem; color: #198754;"></i>
+                                <h3 class="mt-2 mb-0">0</h3>
+                                <small class="text-muted">Chapters</small>
+                            </div>
+                        </div>
+                        <div class="col-4">
+                            <div class="stat-box">
+                                <i class="bi bi-clock-history" style="font-size: 2rem; color: #ffc107;"></i>
+                                <h3 class="mt-2 mb-0">0h</h3>
+                                <small class="text-muted">Content</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="alert alert-warning">
+        <i class="bi bi-exclamation-triangle"></i>
+        <strong>Note:</strong> Creative Tonies management coming soon! (User Story 2)
+    </div>
+</div>
+
+@code {
+    // Future: Load Tonies and stats here
+}
+

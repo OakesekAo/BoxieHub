@@ -1,0 +1,110 @@
+﻿@using BoxieHub.Data
+@using BoxieHub.Models
+@using Microsoft.EntityFrameworkCore
+@using System.Security.Claims
+@inject ApplicationDbContext DbContext
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Navigation
+
+<div class="card shadow-sm mb-4">
+    <div class="card-header bg-light d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">
+            <i class="bi bi-person-check"></i> Linked Accounts
+            @if (credentialCount > 0)
+            {
+                <span class="badge bg-primary ms-2">@credentialCount</span>
+            }
+        </h5>
+        @if (credentialCount > 0)
+        {
+            <a href="/tonies/accounts" class="btn btn-sm btn-outline-primary">
+                <i class="bi bi-gear"></i> Manage
+            </a>
+        }
+    </div>
+    <div class="card-body">
+        @if (isLoading)
+        {
+            <div class="text-center py-3">
+                <div class="spinner-border spinner-border-sm text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+            </div>
+        }
+        else if (credentials == null || !credentials.Any())
+        {
+            <div class="text-center text-muted py-3">
+                <i class="bi bi-info-circle"></i> No accounts linked yet
+            </div>
+        }
+        else
+        {
+            @foreach (var credential in credentials.Take(3))
+            {
+                <div class="d-flex align-items-center mb-2 pb-2 @(credential != credentials.Last() ? "border-bottom" : "")">
+                    <i class="bi bi-person-circle me-2" style="font-size: 1.5rem; color: #0d6efd;"></i>
+                    <div class="flex-grow-1">
+                        <div>
+                            <strong>@credential.DisplayName</strong>
+                            @if (credential.IsDefault)
+                            {
+                                <span class="badge bg-success ms-2">Default</span>
+                            }
+                        </div>
+                    </div>
+                    @if (credential.LastAuthenticated.HasValue)
+                    {
+                        <small class="text-success">
+                            <i class="bi bi-check-circle-fill"></i> Last used: @credential.LastAuthenticated.Value.ToLocalTime().ToString("MMM d")
+                        </small>
+                    }
+                </div>
+            }
+
+            @if (credentialCount > 3)
+            {
+                <div class="text-center mt-3">
+                    <a href="/tonies/accounts" class="text-decoration-none">
+                        <small>View all @credentialCount accounts <i class="bi bi-arrow-right"></i></small>
+                    </a>
+                </div>
+            }
+        }
+    </div>
+</div>
+
+@code {
+    private List<TonieCredential>? credentials;
+    private int credentialCount;
+    private bool isLoading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadCredentials();
+    }
+
+    private async Task LoadCredentials()
+    {
+        isLoading = true;
+        try
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var userId = authState.User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+            if (!string.IsNullOrEmpty(userId))
+            {
+                credentials = await DbContext.TonieCredentials
+                    .Where(c => c.UserId == userId)
+                    .OrderByDescending(c => c.IsDefault)
+                    .ThenByDescending(c => c.LastAuthenticated)
+                    .ToListAsync();
+
+                credentialCount = credentials.Count;
+            }
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+}
