@@ -186,54 +186,51 @@ protected override async Task OnInitializedAsync()
     await LoadData();
 }
 
-private async Task LoadData()
-{
-    isLoading = true;
-    errorMessage = null;
-    errorDetails = null;
+    private async Task LoadData()
+    {
+        isLoading = true;
+        errorMessage = null;
+        errorDetails = null;
         
-    try
-    {
-        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
-        var userId = authState.User.FindFirstValue(ClaimTypes.NameIdentifier);
-
-        if (string.IsNullOrEmpty(userId))
+        try
         {
-            errorMessage = "User not authenticated";
-            errorDetails = "No user ID found in authentication state";
-            return;
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var userId = authState.User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+            if (string.IsNullOrEmpty(userId))
+            {
+                errorMessage = "User not authenticated";
+                errorDetails = "No user ID found in authentication state";
+                return;
+            }
+
+            // Load Tonies first (this also loads stats data)
+            tonies = await TonieService.GetUserCreativeTonieAsync(userId);
+            
+            // Then calculate stats (reuses the same Tonie data)
+            stats = await TonieService.GetUserStatsAsync(userId);
+
+            Logger.LogInformation("Loaded {Count} Tonies for user {UserId}", tonies.Count, userId);
         }
-
-        // Load Tonies and stats in parallel
-        var toniesTask = TonieService.GetUserCreativeTonieAsync(userId);
-        var statsTask = TonieService.GetUserStatsAsync(userId);
-
-        await Task.WhenAll(toniesTask, statsTask);
-
-        tonies = await toniesTask;
-        stats = await statsTask;
-
-        Logger.LogInformation("Loaded {Count} Tonies for user {UserId}", tonies.Count, userId);
+        catch (InvalidOperationException ex) when (ex.Message.Contains("No default Tonie Cloud account"))
+        {
+            errorMessage = "Please add a Tonie Cloud account first to view your Tonies.";
+            errorDetails = ex.ToString();
+            Logger.LogWarning("User has no default Tonie account configured");
+        }
+        catch (Exception ex)
+        {
+            errorMessage = "Failed to load your Tonies. Please try again.";
+            errorDetails = $"Exception Type: {ex.GetType().Name}\n" +
+                          $"Message: {ex.Message}\n" +
+                          $"Stack Trace:\n{ex.StackTrace}";
+            Logger.LogError(ex, "Error loading Tonies");
+        }
+        finally
+        {
+            isLoading = false;
+        }
     }
-    catch (InvalidOperationException ex) when (ex.Message.Contains("No default Tonie Cloud account"))
-    {
-        errorMessage = "Please add a Tonie Cloud account first to view your Tonies.";
-        errorDetails = ex.ToString();
-        Logger.LogWarning("User has no default Tonie account configured");
-    }
-    catch (Exception ex)
-    {
-        errorMessage = "Failed to load your Tonies. Please try again.";
-        errorDetails = $"Exception Type: {ex.GetType().Name}\n" +
-                      $"Message: {ex.Message}\n" +
-                      $"Stack Trace:\n{ex.StackTrace}";
-        Logger.LogError(ex, "Error loading Tonies");
-    }
-    finally
-    {
-        isLoading = false;
-    }
-}
 
     private async Task RefreshData()
     {
