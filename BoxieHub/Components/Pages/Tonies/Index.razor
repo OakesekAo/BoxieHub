@@ -2,12 +2,17 @@
 @page "/tonies"
 @using BoxieHub.Components.Pages.Tonies.Components
 @using BoxieHub.Services
+@using BoxieHub.Data
 @using System.Security.Claims
 @using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
 @inject ITonieService TonieService
+@inject ApplicationDbContext DbContext
 @inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Navigation
 @inject ILogger<Index> Logger
 @attribute [Authorize]
+@implements IDisposable
 
 <PageTitle>My Creative Tonies - BoxieHub</PageTitle>
 
@@ -15,9 +20,12 @@
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h2><i class="bi bi-music-note-list"></i> My Creative Tonies</h2>
         <div>
-            <button class="btn btn-outline-secondary me-2" @onclick="RefreshData" disabled="@isLoading">
-                <i class="bi bi-arrow-clockwise"></i> Refresh
-            </button>
+            @if (hasLinkedAccounts)
+            {
+                <button class="btn btn-outline-secondary me-2" @onclick="RefreshData" disabled="@isLoading">
+                    <i class="bi bi-arrow-clockwise"></i> Refresh
+                </button>
+            }
             <a href="/tonies/add-account" class="btn btn-primary">
                 <i class="bi bi-link-45deg"></i> Add Tonie Account
             </a>
@@ -189,72 +197,108 @@
 </style>
 
 @code {
-    private List<BoxieHub.Models.BoxieCloud.CreativeTonieDto>? tonies;
-    private TonieStatsViewModel? stats;
-    private bool isLoading = true;
-    private bool isStaleData = false;
-    private string? errorMessage;
-    private string? errorDetails;
+private List<BoxieHub.Models.BoxieCloud.CreativeTonieDto>? tonies;
+private TonieStatsViewModel? stats;
+private bool isLoading = true;
+private bool isStaleData = false;
+private bool hasLinkedAccounts = false;
+private string? errorMessage;
+private string? errorDetails;
 
-    protected override async Task OnInitializedAsync()
+protected override async Task OnInitializedAsync()
+{
+    // Subscribe to navigation events to reload when coming back from manage accounts page
+    Navigation.LocationChanged += HandleLocationChanged;
+    await LoadData();
+}
+
+private async void HandleLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
+{
+    // If navigated to this page, reload data
+    if (e.Location.EndsWith("/tonies", StringComparison.OrdinalIgnoreCase))
     {
-        await LoadData();
+        await InvokeAsync(async () =>
+        {
+            await LoadData();
+            StateHasChanged();
+        });
     }
+}
 
-    private async Task LoadData()
-    {
-        isLoading = true;
-        errorMessage = null;
-        errorDetails = null;
+public void Dispose()
+{
+    Navigation.LocationChanged -= HandleLocationChanged;
+}
+
+private async Task LoadData()
+{
+    isLoading = true;
+    errorMessage = null;
+    errorDetails = null;
         
-        try
+    try
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var userId = authState.User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+        if (string.IsNullOrEmpty(userId))
         {
-            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
-            var userId = authState.User.FindFirstValue(ClaimTypes.NameIdentifier);
+            errorMessage = "User not authenticated";
+            errorDetails = "No user ID found in authentication state";
+            return;
+        }
 
-            if (string.IsNullOrEmpty(userId))
-            {
-                errorMessage = "User not authenticated";
-                errorDetails = "No user ID found in authentication state";
-                return;
-            }
-
-            // Load Tonies from database (API only if no data exists)
-            var (loadedTonies, isStale) = await TonieService.GetUserCreativeTonieAsync(userId, forceRefresh: false);
-            tonies = loadedTonies;
-            isStaleData = isStale;
+        // Check if user has any linked accounts
+        var credentials = await DbContext.TonieCredentials
+            .Where(c => c.UserId == userId)
+            .ToListAsync();
             
-            // Calculate stats from the loaded Tonies (no additional API call or DbContext access)
-            stats = new TonieStatsViewModel
-            {
-                TotalTonies = tonies.Count,
-                TotalChapters = tonies.Sum(t => t.ChaptersPresent),
-                TotalSecondsPresent = tonies.Sum(t => t.SecondsPresent),
-                TotalSecondsRemaining = tonies.Sum(t => t.SecondsRemaining),
-                TotalDuration = TimeSpan.FromSeconds(tonies.Sum(t => t.SecondsPresent))
-            };
+        hasLinkedAccounts = credentials.Any();
 
-            Logger.LogInformation("Loaded {Count} Tonies for user {UserId} (stale: {IsStale})", tonies.Count, userId, isStale);
-        }
-        catch (InvalidOperationException ex) when (ex.Message.Contains("No default Tonie Cloud account"))
+        if (!hasLinkedAccounts)
         {
-            errorMessage = "Please add a Tonie Cloud account first to view your Tonies.";
-            errorDetails = ex.ToString();
-            Logger.LogWarning("User has no default Tonie account configured");
+            // No accounts linked - clear any stale data
+            tonies = new List<BoxieHub.Models.BoxieCloud.CreativeTonieDto>();
+            stats = new TonieStatsViewModel();
+            return;
         }
-        catch (Exception ex)
+
+        // Load Tonies from database (API only if no data exists)
+        var (loadedTonies, isStale) = await TonieService.GetUserCreativeTonieAsync(userId, forceRefresh: false);
+        tonies = loadedTonies;
+        isStaleData = isStale;
+            
+        // Calculate stats from the loaded Tonies (no additional API call or DbContext access)
+        stats = new TonieStatsViewModel
         {
-            errorMessage = "Failed to load your Tonies. Please try again.";
-            errorDetails = $"Exception Type: {ex.GetType().Name}\n" +
-                          $"Message: {ex.Message}\n" +
-                          $"Stack Trace:\n{ex.StackTrace}";
-            Logger.LogError(ex, "Error loading Tonies");
-        }
-        finally
-        {
-            isLoading = false;
-        }
+            TotalTonies = tonies.Count,
+            TotalChapters = tonies.Sum(t => t.ChaptersPresent),
+            TotalSecondsPresent = tonies.Sum(t => t.SecondsPresent),
+            TotalSecondsRemaining = tonies.Sum(t => t.SecondsRemaining),
+            TotalDuration = TimeSpan.FromSeconds(tonies.Sum(t => t.SecondsPresent))
+        };
+
+        Logger.LogInformation("Loaded {Count} Tonies for user {UserId} (stale: {IsStale})", tonies.Count, userId, isStale);
     }
+    catch (InvalidOperationException ex) when (ex.Message.Contains("No default Tonie Cloud account"))
+    {
+        errorMessage = "Please add a Tonie Cloud account first to view your Tonies.";
+        errorDetails = ex.ToString();
+        Logger.LogWarning("User has no default Tonie account configured");
+    }
+    catch (Exception ex)
+    {
+        errorMessage = "Failed to load your Tonies. Please try again.";
+        errorDetails = $"Exception Type: {ex.GetType().Name}\n" +
+                      $"Message: {ex.Message}\n" +
+                      $"Stack Trace:\n{ex.StackTrace}";
+        Logger.LogError(ex, "Error loading Tonies");
+    }
+    finally
+    {
+        isLoading = false;
+    }
+}
 
     private async Task RefreshData()
     {

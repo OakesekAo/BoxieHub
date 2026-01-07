@@ -50,6 +50,13 @@ public interface ITonieService
         string tonieId, 
         string chapterId, 
         CancellationToken ct = default);
+    
+    /// <summary>
+    /// Delete all synced data associated with a Tonie account
+    /// Removes households and creative tonies (characters) synced from that account
+    /// Does NOT delete local content items, assignments, or devices
+    /// </summary>
+    Task DeleteAccountDataAsync(int credentialId, CancellationToken ct = default);
 }
 
 public class TonieService : ITonieService
@@ -421,6 +428,60 @@ public class TonieService : ITonieService
         }
 
         return dto;
+    }
+
+    public async Task DeleteAccountDataAsync(int credentialId, CancellationToken ct = default)
+    {
+        await using var dbContext = await _dbContextFactory.CreateDbContextAsync(ct);
+        
+        // Get the credential to verify it exists and get the user
+        var credential = await dbContext.TonieCredentials
+            .FirstOrDefaultAsync(c => c.Id == credentialId, ct);
+
+        if (credential == null)
+        {
+            _logger.LogWarning("Attempted to delete data for non-existent credential {CredentialId}", credentialId);
+            return;
+        }
+
+        var userId = credential.UserId;
+        _logger.LogInformation("Deleting synced Tonie data for credential {CredentialId} (user {UserId})", credentialId, userId);
+
+        // Get all households that were synced from this account
+        // We identify them by checking if they have an ExternalId (from Tonie Cloud)
+        // and belong to the user (through HouseholdMembers)
+        var households = await dbContext.Households
+            .Include(h => h.Characters.Where(c => c.Type == CharacterType.Creative))
+            .Include(h => h.Members)
+            .Where(h => h.ExternalId != null && h.Members.Any(m => m.UserId == userId))
+            .ToListAsync(ct);
+
+        int deletedHouseholds = 0;
+        int deletedCharacters = 0;
+
+        foreach (var household in households)
+        {
+            // Count creative tonies (characters) before deletion
+            var creativeTonieCount = household.Characters.Count(c => c.Type == CharacterType.Creative);
+            deletedCharacters += creativeTonieCount;
+
+            // Delete all creative tonie characters from this household
+            var creativeTonies = household.Characters
+                .Where(c => c.Type == CharacterType.Creative)
+                .ToList();
+
+            dbContext.Characters.RemoveRange(creativeTonies);
+
+            // Delete the household itself (synced from Tonie Cloud)
+            dbContext.Households.Remove(household);
+            deletedHouseholds++;
+        }
+
+        await dbContext.SaveChangesAsync(ct);
+
+        _logger.LogInformation(
+            "Deleted {HouseholdCount} household(s) and {CharacterCount} creative tonie(s) for credential {CredentialId}",
+            deletedHouseholds, deletedCharacters, credentialId);
     }
 
     /// <summary>

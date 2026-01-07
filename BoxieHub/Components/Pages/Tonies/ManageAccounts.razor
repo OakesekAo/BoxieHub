@@ -2,10 +2,12 @@
 @page "/tonies/accounts"
 @using BoxieHub.Data
 @using BoxieHub.Models
+@using BoxieHub.Services
 @using Microsoft.EntityFrameworkCore
 @using System.Security.Claims
 @using Microsoft.AspNetCore.Authorization
 @inject ApplicationDbContext DbContext
+@inject ITonieService TonieService
 @inject AuthenticationStateProvider AuthStateProvider
 @inject NavigationManager Navigation
 @inject ILogger<ManageAccounts> Logger
@@ -176,11 +178,31 @@
                     <button type="button" class="btn-close btn-close-white" @onclick="CancelDelete" disabled="@isProcessing"></button>
                 </div>
                 <div class="modal-body">
-                    <p>Are you sure you want to remove this Tonie Cloud account?</p>
+                    <p><strong>Are you sure you want to remove this Tonie Cloud account?</strong></p>
+                    
                     <div class="alert alert-warning mb-3">
-                        <div><strong>Name:</strong> @accountToDelete.DisplayName</div>
+                        <div><strong>Account:</strong> @accountToDelete.DisplayName</div>
                         <div><strong>Email:</strong> @accountToDelete.TonieUsername</div>
                     </div>
+
+                    <div class="alert alert-danger mb-3">
+                        <h6 class="alert-heading"><i class="bi bi-trash"></i> What will be deleted:</h6>
+                        <ul class="mb-0">
+                            <li>All <strong>households</strong> synced from this account</li>
+                            <li>All <strong>Creative Tonies</strong> (characters) from those households</li>
+                            <li>All cached <strong>chapter data</strong> for those Tonies</li>
+                        </ul>
+                    </div>
+
+                    <div class="alert alert-info mb-3">
+                        <h6 class="alert-heading"><i class="bi bi-shield-check"></i> What will be kept:</h6>
+                        <ul class="mb-0">
+                            <li>Your <strong>local content</strong> (uploaded audio files)</li>
+                            <li>Your <strong>Tonieboxes</strong> (devices)</li>
+                            <li>Your <strong>playlists and assignments</strong></li>
+                        </ul>
+                    </div>
+                    
                     <p class="text-danger mb-0">
                         <i class="bi bi-exclamation-circle"></i> <strong>This action cannot be undone.</strong>
                     </p>
@@ -198,7 +220,7 @@
                         else
                         {
                             <i class="bi bi-trash me-2"></i>
-                            <span>Delete Account</span>
+                            <span>Delete Account & Synced Data</span>
                         }
                     </button>
                 </div>
@@ -277,6 +299,12 @@
                 var wasDefault = credentialToDelete.IsDefault;
                 var displayName = credentialToDelete.DisplayName;
 
+                // IMPORTANT: Delete all synced Tonie data BEFORE deleting the credential
+                // This removes households and creative tonies synced from this account
+                Logger.LogInformation("Deleting synced Tonie data for credential '{Name}' (ID: {Id})", displayName, accountToDelete.Id);
+                await TonieService.DeleteAccountDataAsync(accountToDelete.Id);
+
+                // Now delete the credential itself
                 DbContext.TonieCredentials.Remove(credentialToDelete);
                 await DbContext.SaveChangesAsync();
 
@@ -300,7 +328,7 @@
                     }
                 }
 
-                ShowSuccess($"Account '{displayName}' deleted successfully");
+                ShowSuccess($"Account '{displayName}' and all synced data deleted successfully");
                 await LoadCredentials();
             }
         }
