@@ -2,6 +2,7 @@
 @page "/tonies/{householdId}/{tonieId}"
 @using BoxieHub.Models.BoxieCloud
 @using BoxieHub.Services
+@using BoxieHub.Components.Pages.Tonies.Components
 @using System.Security.Claims
 @using Microsoft.AspNetCore.Authorization
 @inject ITonieService TonieService
@@ -193,27 +194,15 @@
     }
 </div>
 
-<!-- Upload Modal (placeholder for now) -->
-@if (showUploadModal)
+<!-- Upload Modal -->
+@if (showUploadModal && tonie != null)
 {
-    <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
-        <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">Upload Audio</h5>
-                    <button type="button" class="btn-close" @onclick="() => showUploadModal = false"></button>
-                </div>
-                <div class="modal-body">
-                    <p>Upload functionality coming in next step!</p>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" @onclick="() => showUploadModal = false">
-                        Close
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
+    <UploadAudioModal HouseholdId="@HouseholdId"
+                      TonieId="@TonieId"
+                      TonieName="@tonie.Name"
+                      AvailableSeconds="@tonie.SecondsRemaining"
+                      OnUploadComplete="HandleUploadComplete"
+                      OnCancel="() => showUploadModal = false" />
 }
 
 <!-- Delete Confirmation Modal -->
@@ -361,6 +350,13 @@
     private void ShowUploadModal()
     {
         showUploadModal = true;
+    }
+
+    private async Task HandleUploadComplete()
+    {
+        showUploadModal = false;
+        ShowSuccess("Upload completed! Refreshing Tonie details...");
+        await LoadTonieDetails();
     }
 
     private void ShowDeleteConfirmation(ChapterDto chapter)
