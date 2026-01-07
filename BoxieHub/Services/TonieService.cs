@@ -52,6 +52,17 @@ public interface ITonieService
         CancellationToken ct = default);
     
     /// <summary>
+    /// Reorder chapters on a Creative Tonie
+    /// </summary>
+    Task ReorderChaptersAsync(
+        string userId,
+        string householdId,
+        string tonieId,
+        string tonieName,
+        List<ChapterDto> newChapterOrder,
+        CancellationToken ct = default);
+    
+    /// <summary>
     /// Delete all synced data associated with a Tonie account
     /// Removes households and creative tonies (characters) synced from that account
     /// Does NOT delete local content items, assignments, or devices
@@ -282,6 +293,42 @@ public class TonieService : ITonieService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error deleting chapter {ChapterId} from Tonie {TonieId}", chapterId, tonieId);
+            throw;
+        }
+    }
+
+    public async Task ReorderChaptersAsync(
+        string userId,
+        string householdId,
+        string tonieId,
+        string tonieName,
+        List<ChapterDto> newChapterOrder,
+        CancellationToken ct = default)
+    {
+        var credentials = await GetUserCredentialsAsync(userId);
+
+        try
+        {
+            _logger.LogInformation("Reordering {Count} chapters for Tonie {TonieId}", newChapterOrder.Count, tonieId);
+
+            // Call API to update chapter order
+            await _boxieCloudClient.PatchCreativeTonieAsync(
+                credentials.Username,
+                credentials.Password,
+                householdId,
+                tonieId,
+                tonieName,
+                newChapterOrder,
+                ct);
+
+            _logger.LogInformation("Successfully reordered chapters for Tonie {TonieId}", tonieId);
+            
+            // Refresh this specific Tonie from API
+            await RefreshTonieFromApiAsync(userId, householdId, tonieId, ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error reordering chapters for Tonie {TonieId}", tonieId);
             throw;
         }
     }
