@@ -63,6 +63,17 @@ public interface ITonieService
         CancellationToken ct = default);
     
     /// <summary>
+    /// Update a chapter's title
+    /// </summary>
+    Task<bool> UpdateChapterTitleAsync(
+        string userId,
+        string householdId,
+        string tonieId,
+        string chapterId,
+        string newTitle,
+        CancellationToken ct = default);
+    
+    /// <summary>
     /// Delete all synced data associated with a Tonie account
     /// Removes households and creative tonies (characters) synced from that account
     /// Does NOT delete local content items, assignments, or devices
@@ -329,6 +340,62 @@ public class TonieService : ITonieService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error reordering chapters for Tonie {TonieId}", tonieId);
+            throw;
+        }
+    }
+
+    public async Task<bool> UpdateChapterTitleAsync(
+        string userId,
+        string householdId,
+        string tonieId,
+        string chapterId,
+        string newTitle,
+        CancellationToken ct = default)
+    {
+        var credentials = await GetUserCredentialsAsync(userId);
+
+        try
+        {
+            // Get current Tonie details
+            var tonie = await _boxieCloudClient.GetCreativeTonieDetailsAsync(
+                credentials.Username,
+                credentials.Password,
+                householdId,
+                tonieId,
+                ct);
+
+            // Find and update the chapter
+            var chapter = tonie.Chapters?.FirstOrDefault(c => c.Id == chapterId);
+            if (chapter == null)
+            {
+                _logger.LogWarning("Chapter {ChapterId} not found in Tonie {TonieId}", chapterId, tonieId);
+                return false;
+            }
+
+            var oldTitle = chapter.Title;
+            chapter.Title = newTitle;
+
+            // Update via API
+            await _boxieCloudClient.PatchCreativeTonieAsync(
+                credentials.Username,
+                credentials.Password,
+                householdId,
+                tonieId,
+                tonie.Name,
+                tonie.Chapters!,
+                ct);
+
+            _logger.LogInformation("Successfully updated chapter {ChapterId} title from '{OldTitle}' to '{NewTitle}'", 
+                chapterId, oldTitle, newTitle);
+            
+            // Refresh cache
+            await RefreshTonieFromApiAsync(userId, householdId, tonieId, ct);
+            
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating chapter {ChapterId} title", chapterId);
             throw;
         }
     }

@@ -164,7 +164,7 @@
                                     <th>Title</th>
                                     <th style="width: 100px;">Duration</th>
                                     <th style="width: 120px;">Status</th>
-                                    <th style="width: 100px;" class="text-end">Actions</th>
+                                    <th style="width: 150px;" class="text-end">Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -175,17 +175,34 @@
                                         var chapter = tonie.Chapters[i];
                                         var index = i + 1;
                                         var currentIndex = i;
-                                        <tr draggable="true"
+                                        <tr draggable="@(!IsChapterEditing(chapter.Id))"
                                             @key="chapter.Id"
                                             data-chapter-index="@currentIndex"
                                             class="chapter-row"
-                                            style="cursor: move;">
+                                            style="cursor: @(IsChapterEditing(chapter.Id) ? "default" : "move");">
                                             <td class="align-middle text-muted">
-                                                <i class="bi bi-grip-vertical me-2" style="opacity: 0.5;"></i>
+                                                @if (!IsChapterEditing(chapter.Id))
+                                                {
+                                                    <i class="bi bi-grip-vertical me-2" style="opacity: 0.5;"></i>
+                                                }
                                                 @index
                                             </td>
                                             <td class="align-middle">
-                                                <strong>@chapter.Title</strong>
+                                                @if (IsChapterEditing(chapter.Id))
+                                                {
+                                                    <input type="text" 
+                                                           class="form-control form-control-sm"
+                                                           @bind="editingTitles[chapter.Id]"
+                                                           @bind:event="oninput"
+                                                           maxlength="50"
+                                                           placeholder="Chapter title"
+                                                           @onkeydown="@((e) => HandleTitleKeyDown(e, chapter.Id))" />
+                                                    <small class="text-muted">@editingTitles[chapter.Id].Length / 50 characters</small>
+                                                }
+                                                else
+                                                {
+                                                    <strong>@chapter.Title</strong>
+                                                }
                                             </td>
                                             <td class="align-middle">
                                                 <small class="text-muted">
@@ -207,12 +224,43 @@
                                                 }
                                             </td>
                                             <td class="align-middle text-end">
-                                                <button class="btn btn-sm btn-outline-danger" 
-                                                        @onclick="() => ShowDeleteConfirmation(chapter)"
-                                                        disabled="@(isDeleting || hasUnsavedChanges)"
-                                                        title="Delete chapter">
-                                                    <i class="bi bi-trash"></i>
-                                                </button>
+                                                @if (IsChapterEditing(chapter.Id))
+                                                {
+                                                    <button class="btn btn-sm btn-success me-1" 
+                                                            @onclick="() => SaveChapterTitle(chapter.Id)"
+                                                            disabled="@isSavingTitle"
+                                                            title="Save">
+                                                        @if (isSavingTitle)
+                                                        {
+                                                            <span class="spinner-border spinner-border-sm"></span>
+                                                        }
+                                                        else
+                                                        {
+                                                            <i class="bi bi-check-lg"></i>
+                                                        }
+                                                    </button>
+                                                    <button class="btn btn-sm btn-secondary" 
+                                                            @onclick="() => CancelEditChapter(chapter.Id)"
+                                                            disabled="@isSavingTitle"
+                                                            title="Cancel">
+                                                        <i class="bi bi-x-lg"></i>
+                                                    </button>
+                                                }
+                                                else
+                                                {
+                                                    <button class="btn btn-sm btn-outline-primary me-1" 
+                                                            @onclick="() => StartEditChapter(chapter)"
+                                                            disabled="@(hasUnsavedChanges || isDeleting || editingChapters.Any())"
+                                                            title="Edit title">
+                                                        <i class="bi bi-pencil"></i>
+                                                    </button>
+                                                    <button class="btn btn-sm btn-outline-danger" 
+                                                            @onclick="() => ShowDeleteConfirmation(chapter)"
+                                                            disabled="@(isDeleting || hasUnsavedChanges || editingChapters.Any())"
+                                                            title="Delete chapter">
+                                                        <i class="bi bi-trash"></i>
+                                                    </button>
+                                                }
                                             </td>
                                         </tr>
                                     }
@@ -364,6 +412,11 @@
     // Reorder state
     private bool hasUnsavedChanges = false;
     private DotNetObjectReference<Details>? dotnetRef;
+    
+    // Edit chapter state
+    private Dictionary<string, bool> editingChapters = new();
+    private Dictionary<string, string> editingTitles = new();
+    private bool isSavingTitle = false;
 
     protected override async Task OnInitializedAsync()
     {
@@ -565,6 +618,119 @@
         if (percentage >= 90) return "bg-danger";
         if (percentage >= 70) return "bg-warning";
         return "bg-success";
+    }
+    
+    // Edit chapter methods
+    private bool IsChapterEditing(string chapterId)
+    {
+        return editingChapters.ContainsKey(chapterId) && editingChapters[chapterId];
+    }
+
+    private void StartEditChapter(ChapterDto chapter)
+    {
+        editingChapters[chapter.Id] = true;
+        editingTitles[chapter.Id] = chapter.Title;
+    }
+
+    private void CancelEditChapter(string chapterId)
+    {
+        editingChapters.Remove(chapterId);
+        editingTitles.Remove(chapterId);
+    }
+
+    private void HandleTitleKeyDown(KeyboardEventArgs e, string chapterId)
+    {
+        if (e.Key == "Enter")
+        {
+            _ = SaveChapterTitle(chapterId);
+        }
+        else if (e.Key == "Escape")
+        {
+            CancelEditChapter(chapterId);
+        }
+    }
+
+    private async Task SaveChapterTitle(string chapterId)
+    {
+        if (!editingTitles.TryGetValue(chapterId, out var newTitle))
+            return;
+        
+        // Validation
+        if (string.IsNullOrWhiteSpace(newTitle))
+        {
+            ShowError("Chapter title cannot be empty");
+            return;
+        }
+        
+        if (newTitle.Length > 50)
+        {
+            ShowError("Chapter title must be 50 characters or less");
+            return;
+        }
+        
+        var chapter = tonie?.Chapters?.FirstOrDefault(c => c.Id == chapterId);
+        if (chapter == null) return;
+        
+        var originalTitle = chapter.Title;
+        
+        // Skip if title hasn't changed
+        if (newTitle == originalTitle)
+        {
+            CancelEditChapter(chapterId);
+            return;
+        }
+        
+        // Optimistic update
+        chapter.Title = newTitle;
+        editingChapters.Remove(chapterId);
+        editingTitles.Remove(chapterId);
+        isSavingTitle = true;
+        StateHasChanged();
+        
+        try
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var userId = authState.User.FindFirstValue(ClaimTypes.NameIdentifier);
+            
+            if (string.IsNullOrEmpty(userId))
+            {
+                ShowError("User not authenticated");
+                chapter.Title = originalTitle; // Rollback
+                return;
+            }
+            
+            var success = await TonieService.UpdateChapterTitleAsync(
+                userId,
+                HouseholdId,
+                TonieId,
+                chapterId,
+                newTitle);
+            
+            if (success)
+            {
+                ShowSuccess($"Updated chapter title to '{newTitle}'");
+                Logger.LogInformation("Updated chapter {ChapterId} title to '{NewTitle}'", 
+                    chapterId, newTitle);
+                
+                // Reload to get fresh data
+                await LoadTonieDetails();
+            }
+            else
+            {
+                chapter.Title = originalTitle; // Rollback
+                ShowError("Failed to update chapter title");
+            }
+        }
+        catch (Exception ex)
+        {
+            chapter.Title = originalTitle; // Rollback
+            ShowError($"Error updating chapter: {ex.Message}");
+            Logger.LogError(ex, "Error updating chapter title for {ChapterId}", chapterId);
+        }
+        finally
+        {
+            isSavingTitle = false;
+        }
     }
     
     // Drag & Drop - JavaScript callback
