@@ -49,7 +49,18 @@
             <div class="card-body">
                 <div class="row align-items-center">
                     <div class="col-md-2 text-center">
-                        <img src="@tonie.ImageUrl" alt="@tonie.Name" class="img-fluid rounded" style="max-height: 150px;" />
+                        <div class="position-relative">
+                            <img src="@tonie.ImageUrl" alt="@tonie.Name" class="img-fluid rounded" style="max-height: 150px;" />
+                            @if (!string.IsNullOrEmpty(tonie.ImageUrl) && tonie.ImageUrl.StartsWith("/uploads/"))
+                            {
+                                <span class="badge bg-primary position-absolute top-0 start-0 m-1" title="Custom image">
+                                    <i class="bi bi-star-fill"></i>
+                                </span>
+                            }
+                        </div>
+                        <button class="btn btn-sm btn-outline-secondary mt-2 w-100" @onclick="() => showImageUploadModal = true">
+                            <i class="bi bi-image"></i> Change Image
+                        </button>
                     </div>
                     <div class="col-md-7">
                         <h2 class="mb-2">@tonie.Name</h2>
@@ -389,6 +400,89 @@
     </div>
 }
 
+<!-- Image Upload Modal -->
+@if (showImageUploadModal)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="bi bi-image"></i> Change Tonie Image
+                    </h5>
+                    <button type="button" class="btn-close" @onclick="() => showImageUploadModal = false" disabled="@isUploadingImage"></button>
+                </div>
+                <div class="modal-body">
+                    @if (!isUploadingImage)
+                    {
+                        <div class="mb-3">
+                            <label class="form-label">Upload Custom Image</label>
+                            <InputFile OnChange="HandleImageSelected" 
+                                      class="form-control" 
+                                      accept="image/png,image/jpeg,image/jpg,image/webp" />
+                            <small class="text-muted">
+                                <i class="bi bi-info-circle"></i> Supported formats: PNG, JPG, WEBP (Max: 5MB)
+                            </small>
+                        </div>
+
+                        @if (selectedImage != null)
+                        {
+                            <div class="alert alert-info">
+                                <h6><i class="bi bi-file-earmark-image"></i> Selected Image</h6>
+                                <p class="mb-1"><strong>Name:</strong> @selectedImageName</p>
+                                <p class="mb-0"><strong>Size:</strong> @FormatFileSize(selectedImageSize)</p>
+                            </div>
+                        }
+
+                        @if (!string.IsNullOrEmpty(imageUploadError))
+                        {
+                            <div class="alert alert-danger">
+                                <i class="bi bi-exclamation-triangle-fill"></i> @imageUploadError
+                            </div>
+                        }
+
+                        @if (tonie?.ImageUrl?.StartsWith("/uploads/") == true)
+                        {
+                            <div class="alert alert-warning">
+                                <i class="bi bi-star-fill"></i> <strong>Current:</strong> Custom image is set
+                                <button class="btn btn-sm btn-outline-danger float-end" @onclick="DeleteCustomImage">
+                                    <i class="bi bi-trash"></i> Revert to Default
+                                </button>
+                            </div>
+                        }
+                    }
+                    else
+                    {
+                        <div class="text-center py-4">
+                            <div class="spinner-border text-primary mb-3" role="status">
+                                <span class="visually-hidden">Uploading...</span>
+                            </div>
+                            <p>Uploading image...</p>
+                        </div>
+                    }
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="() => showImageUploadModal = false" disabled="@isUploadingImage">
+                        Cancel
+                    </button>
+                    <button type="button" class="btn btn-primary" @onclick="UploadCustomImage" disabled="@(selectedImage == null || isUploadingImage)">
+                        @if (isUploadingImage)
+                        {
+                            <span class="spinner-border spinner-border-sm me-2"></span>
+                            <span>Uploading...</span>
+                        }
+                        else
+                        {
+                            <i class="bi bi-upload"></i>
+                            <span>Upload Image</span>
+                        }
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
 @code {
     [Parameter]
     public string HouseholdId { get; set; } = string.Empty;
@@ -417,6 +511,14 @@
     private Dictionary<string, bool> editingChapters = new();
     private Dictionary<string, string> editingTitles = new();
     private bool isSavingTitle = false;
+    
+    // Image upload state
+    private bool showImageUploadModal = false;
+    private IBrowserFile? selectedImage;
+    private string selectedImageName = string.Empty;
+    private long selectedImageSize = 0;
+    private string? imageUploadError;
+    private bool isUploadingImage = false;
 
     protected override async Task OnInitializedAsync()
     {
@@ -618,6 +720,165 @@
         if (percentage >= 90) return "bg-danger";
         if (percentage >= 70) return "bg-warning";
         return "bg-success";
+    }
+    
+    // Image upload methods
+    private void HandleImageSelected(InputFileChangeEventArgs e)
+    {
+        imageUploadError = null;
+        selectedImage = e.File;
+
+        if (selectedImage != null)
+        {
+            selectedImageName = selectedImage.Name;
+            selectedImageSize = selectedImage.Size;
+
+            // Validate file extension
+            var extension = Path.GetExtension(selectedImage.Name).ToLowerInvariant();
+            var allowedExtensions = new[] { ".png", ".jpg", ".jpeg", ".webp" };
+
+            if (!allowedExtensions.Contains(extension))
+            {
+                imageUploadError = "Invalid file format. Please upload PNG, JPG, or WEBP images.";
+                selectedImage = null;
+                selectedImageName = string.Empty;
+                selectedImageSize = 0;
+                return;
+            }
+
+            // Check file size (max 5MB)
+            const long maxSizeBytes = 5 * 1024 * 1024;
+            if (selectedImage.Size > maxSizeBytes)
+            {
+                imageUploadError = $"Image too large. Maximum size is 5MB.";
+                selectedImage = null;
+                selectedImageName = string.Empty;
+                selectedImageSize = 0;
+                return;
+            }
+        }
+    }
+
+    private async Task UploadCustomImage()
+    {
+        if (selectedImage == null || tonie == null) return;
+
+        isUploadingImage = true;
+        imageUploadError = null;
+
+        try
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var userId = authState.User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+            if (string.IsNullOrEmpty(userId))
+            {
+                imageUploadError = "User not authenticated";
+                isUploadingImage = false;
+                return;
+            }
+
+            // Open file stream
+            using var stream = selectedImage.OpenReadStream(maxAllowedSize: 5 * 1024 * 1024);
+
+            // Upload image
+            var success = await TonieService.UploadCustomTonieImageAsync(
+                userId,
+                HouseholdId,
+                TonieId,
+                stream,
+                selectedImage.ContentType,
+                selectedImage.Name);
+
+            if (success)
+            {
+                ShowSuccess("Custom image uploaded successfully!");
+                
+                // Reload Tonie details to show new image
+                await LoadTonieDetails();
+                
+                // Close modal and reset
+                showImageUploadModal = false;
+                selectedImage = null;
+                selectedImageName = string.Empty;
+                selectedImageSize = 0;
+            }
+            else
+            {
+                imageUploadError = "Failed to upload image";
+            }
+        }
+        catch (Exception ex)
+        {
+            imageUploadError = $"Error uploading image: {ex.Message}";
+            Logger.LogError(ex, "Error uploading custom image");
+        }
+        finally
+        {
+            isUploadingImage = false;
+        }
+    }
+
+    private async Task DeleteCustomImage()
+    {
+        if (tonie == null) return;
+
+        isUploadingImage = true;
+
+        try
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var userId = authState.User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+            if (string.IsNullOrEmpty(userId))
+            {
+                ShowError("User not authenticated");
+                isUploadingImage = false;
+                return;
+            }
+
+            var success = await TonieService.DeleteCustomTonieImageAsync(
+                userId,
+                HouseholdId,
+                TonieId);
+
+            if (success)
+            {
+                ShowSuccess("Custom image deleted. Reverted to default image.");
+                
+                // Reload Tonie details
+                await LoadTonieDetails();
+                
+                // Close modal
+                showImageUploadModal = false;
+            }
+            else
+            {
+                ShowError("Failed to delete custom image");
+            }
+        }
+        catch (Exception ex)
+        {
+            ShowError($"Error deleting image: {ex.Message}");
+            Logger.LogError(ex, "Error deleting custom image");
+        }
+        finally
+        {
+            isUploadingImage = false;
+        }
+    }
+
+    private string FormatFileSize(long bytes)
+    {
+        string[] sizes = { "B", "KB", "MB", "GB" };
+        double len = bytes;
+        int order = 0;
+        while (len >= 1024 && order < sizes.Length - 1)
+        {
+            order++;
+            len = len / 1024;
+        }
+        return $"{len:0.##} {sizes[order]}";
     }
     
     // Edit chapter methods

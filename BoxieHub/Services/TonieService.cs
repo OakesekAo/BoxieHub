@@ -74,6 +74,27 @@ public interface ITonieService
         CancellationToken ct = default);
     
     /// <summary>
+    /// Upload custom image for a Tonie (local only, not synced to Tonie Cloud)
+    /// </summary>
+    Task<bool> UploadCustomTonieImageAsync(
+        string userId,
+        string householdId,
+        string tonieId,
+        Stream imageStream,
+        string contentType,
+        string fileName,
+        CancellationToken ct = default);
+    
+    /// <summary>
+    /// Delete custom image for a Tonie (reverts to Tonie Cloud image)
+    /// </summary>
+    Task<bool> DeleteCustomTonieImageAsync(
+        string userId,
+        string householdId,
+        string tonieId,
+        CancellationToken ct = default);
+    
+    /// <summary>
     /// Delete all synced data associated with a Tonie account
     /// Removes households and creative tonies (characters) synced from that account
     /// Does NOT delete local content items, assignments, or devices
@@ -400,6 +421,133 @@ public class TonieService : ITonieService
         }
     }
 
+    public async Task<bool> UploadCustomTonieImageAsync(
+        string userId,
+        string householdId,
+        string tonieId,
+        Stream imageStream,
+        string contentType,
+        string fileName,
+        CancellationToken ct = default)
+    {
+        await using var dbContext = await _dbContextFactory.CreateDbContextAsync(ct);
+
+        try
+        {
+            // Find the character
+            var character = await dbContext.Characters
+                .Include(c => c.CustomImage)
+                .FirstOrDefaultAsync(c => 
+                    c.ExternalCharacterId == tonieId && 
+                    c.Household!.ExternalId == householdId, ct);
+
+            if (character == null)
+            {
+                _logger.LogWarning("Character {TonieId} not found in household {HouseholdId}", tonieId, householdId);
+                return false;
+            }
+
+            // Read image data
+            using var ms = new MemoryStream();
+            await imageStream.CopyToAsync(ms, ct);
+            var imageData = ms.ToArray();
+
+            // Validate image size (max 5MB)
+            const long maxSizeBytes = 5 * 1024 * 1024;
+            if (imageData.Length > maxSizeBytes)
+            {
+                _logger.LogWarning("Image too large: {Size} bytes (max: {MaxSize})", imageData.Length, maxSizeBytes);
+                throw new InvalidOperationException($"Image size must be less than 5MB. Current size: {imageData.Length / (1024 * 1024.0):F2}MB");
+            }
+
+            // Delete old custom image if exists
+            if (character.CustomImageId.HasValue)
+            {
+                var oldImage = await dbContext.FileUploads.FindAsync(new object[] { character.CustomImageId.Value }, ct);
+                if (oldImage != null)
+                {
+                    dbContext.FileUploads.Remove(oldImage);
+                }
+            }
+
+            // Create new image upload
+            var fileUpload = new FileUpload
+            {
+                Id = Guid.NewGuid(),
+                Data = imageData,
+                ContentType = contentType,
+                FileName = fileName,
+                FileCategory = "Image",
+                FileSizeBytes = imageData.Length,
+                Created = DateTimeOffset.UtcNow
+            };
+
+            dbContext.FileUploads.Add(fileUpload);
+            character.CustomImageId = fileUpload.Id;
+
+            await dbContext.SaveChangesAsync(ct);
+
+            _logger.LogInformation("Successfully uploaded custom image for Tonie {TonieId}", tonieId);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error uploading custom image for Tonie {TonieId}", tonieId);
+            throw;
+        }
+    }
+
+    public async Task<bool> DeleteCustomTonieImageAsync(
+        string userId,
+        string householdId,
+        string tonieId,
+        CancellationToken ct = default)
+    {
+        await using var dbContext = await _dbContextFactory.CreateDbContextAsync(ct);
+
+        try
+        {
+            // Find the character
+            var character = await dbContext.Characters
+                .Include(c => c.CustomImage)
+                .FirstOrDefaultAsync(c => 
+                    c.ExternalCharacterId == tonieId && 
+                    c.Household!.ExternalId == householdId, ct);
+
+            if (character == null)
+            {
+                _logger.LogWarning("Character {TonieId} not found in household {HouseholdId}", tonieId, householdId);
+                return false;
+            }
+
+            if (!character.CustomImageId.HasValue)
+            {
+                _logger.LogInformation("No custom image to delete for Tonie {TonieId}", tonieId);
+                return true; // Nothing to delete
+            }
+
+            // Delete the file upload
+            var imageId = character.CustomImageId.Value;
+            character.CustomImageId = null;
+            
+            var image = await dbContext.FileUploads.FindAsync(new object[] { imageId }, ct);
+            if (image != null)
+            {
+                dbContext.FileUploads.Remove(image);
+            }
+
+            await dbContext.SaveChangesAsync(ct);
+
+            _logger.LogInformation("Successfully deleted custom image for Tonie {TonieId}", tonieId);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error deleting custom image for Tonie {TonieId}", tonieId);
+            throw;
+        }
+    }
+
     /// <summary>
     /// Sync all Tonie data from API to database
     /// </summary>
@@ -531,7 +679,7 @@ public class TonieService : ITonieService
             Id = character.ExternalCharacterId ?? string.Empty,
             HouseholdId = character.Household?.ExternalId ?? string.Empty,
             Name = character.Name,
-            ImageUrl = character.ImageUrl ?? string.Empty,
+            ImageUrl = character.DisplayImageUrl, // Use DisplayImageUrl to show custom image if available
             SecondsPresent = character.SecondsPresent ?? 0,
             SecondsRemaining = character.SecondsRemaining ?? 0,
             ChaptersPresent = character.ChaptersPresent ?? 0,

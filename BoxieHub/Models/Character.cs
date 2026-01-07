@@ -43,6 +43,13 @@ namespace BoxieHub.Models
         public string? ImageUrl { get; set; }
         
         /// <summary>
+        /// Custom image uploaded by user (overrides ImageUrl if present)
+        /// This is stored locally in BoxieHub and not synced to Tonie Cloud
+        /// </summary>
+        public Guid? CustomImageId { get; set; }
+        public FileUpload? CustomImage { get; set; }
+        
+        /// <summary>
         /// Seconds of content currently on the Tonie
         /// </summary>
         public float? SecondsPresent { get; set; }
@@ -107,5 +114,13 @@ namespace BoxieHub.Models
             LastSyncedAt.HasValue 
                 ? DateTimeOffset.UtcNow - LastSyncedAt.Value 
                 : null;
+        
+        /// <summary>
+        /// Get the image URL to display (prioritizes custom image over Tonie Cloud image)
+        /// </summary>
+        public string DisplayImageUrl => 
+            CustomImageId.HasValue 
+                ? $"/uploads/{CustomImageId}" 
+                : ImageUrl ?? "/images/default-tonie.png";
     }
 }
