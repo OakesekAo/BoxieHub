@@ -165,7 +165,9 @@ public class TonieServiceCascadeDeleteTests : IDisposable
         {
             Id = Guid.NewGuid(),
             Data = new byte[] { 0x01, 0x02, 0x03 },
-            Type = "audio/mpeg"
+            ContentType = "audio/mpeg",
+            FileName = "test.mp3",
+            FileSizeBytes = 3
         };
         _dbContext.Images.Add(upload);
 

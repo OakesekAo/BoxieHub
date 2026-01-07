@@ -194,12 +194,14 @@
     }
 </div>
 
-<!-- Upload Modal -->
-<div class="modal fade @(showUploadModal ? "show d-block" : "")" tabindex="-1" style="@(showUploadModal ? "background-color: rgba(0,0,0,0.5);" : "display: none;")">
-    <div class="modal-dialog modal-lg modal-dialog-centered">
-        <div class="modal-content">
-            @if (tonie != null)
-            {
+<!-- Upload Modal - Always rendered to maintain InputFile state -->
+@if (tonie != null)
+{
+    <div class="modal fade @(showUploadModal ? "show d-block" : "")" 
+         tabindex="-1" 
+         style="@(showUploadModal ? "background-color: rgba(0,0,0,0.5);" : "display: none;")">
+        <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content">
                 <UploadAudioModal HouseholdId="@HouseholdId"
                                   TonieId="@TonieId"
                                   TonieName="@tonie.Name"
@@ -207,10 +209,10 @@
                                   IsVisible="@showUploadModal"
                                   OnUploadComplete="HandleUploadComplete"
                                   OnCancel="() => showUploadModal = false" />
-            }
+            </div>
         </div>
     </div>
-</div>
+}
 
 <!-- Delete Confirmation Modal -->
 @if (showDeleteModal && chapterToDelete != null)

@@ -6,7 +6,8 @@ namespace BoxieHub.Data
 {
     public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options) : IdentityDbContext<ApplicationUser>(options)
     {
-        public DbSet<ImageUpload> Images { get; set; }
+        public DbSet<FileUpload> FileUploads { get; set; }
+        public DbSet<ImageUpload> Images { get; set; } // Legacy view
         public DbSet<Household> Households { get; set; }
         public DbSet<Device> Devices { get; set; }
         public DbSet<Character> Characters { get; set; }
@@ -15,6 +16,7 @@ namespace BoxieHub.Data
         public DbSet<SyncJob> SyncJobs { get; set; }
         public DbSet<HouseholdMember> HouseholdMembers { get; set; }
         public DbSet<TonieCredential> TonieCredentials { get; set; }
+        public DbSet<AudioUploadHistory> AudioUploadHistories { get; set; }
         
         protected override void OnModelCreating(ModelBuilder builder)
         {
@@ -52,6 +54,32 @@ namespace BoxieHub.Data
             builder.Entity<Character>()
                 .HasIndex(c => c.LastSyncedAt)
                 .HasDatabaseName("IX_Characters_LastSyncedAt");
+            
+            // AudioUploadHistory indexes
+            builder.Entity<AudioUploadHistory>()
+                .HasIndex(a => a.UserId)
+                .HasDatabaseName("IX_AudioUploadHistories_UserId");
+            
+            builder.Entity<AudioUploadHistory>()
+                .HasIndex(a => a.Status)
+                .HasDatabaseName("IX_AudioUploadHistories_Status");
+            
+            builder.Entity<AudioUploadHistory>()
+                .HasIndex(a => new { a.TonieId, a.HouseholdId })
+                .HasDatabaseName("IX_AudioUploadHistories_TonieId_HouseholdId");
+            
+            builder.Entity<AudioUploadHistory>()
+                .HasIndex(a => a.Created)
+                .HasDatabaseName("IX_AudioUploadHistories_Created");
+            
+            // FileUpload indexes
+            builder.Entity<FileUpload>()
+                .HasIndex(f => f.FileCategory)
+                .HasDatabaseName("IX_FileUploads_FileCategory");
+            
+            builder.Entity<FileUpload>()
+                .HasIndex(f => f.Created)
+                .HasDatabaseName("IX_FileUploads_Created");
         }
     }
 }

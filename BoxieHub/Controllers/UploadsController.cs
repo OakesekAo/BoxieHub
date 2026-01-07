@@ -22,7 +22,7 @@ namespace BoxieHub.Controllers
                 return NotFound();
             }
 
-            return File(image.Data!, image.Type!);
+            return File(image.Data!, image.ContentType!);
         }
     }
 }

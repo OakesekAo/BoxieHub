@@ -74,7 +74,9 @@ public abstract class TestBase
         {
             Id = Guid.NewGuid(),
             Data = new byte[] { 0x01, 0x02, 0x03, 0x04 },
-            Type = "audio/mpeg"
+            ContentType = "audio/mpeg",
+            FileName = fileName,
+            FileSizeBytes = 4
         };
         DbContext.Images.Add(upload);
         DbContext.SaveChanges();
