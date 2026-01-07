@@ -338,10 +338,17 @@
                 isCalculatingDuration = true;
                 StateHasChanged();
 
-                var fileRef = await JS.InvokeAsync<IJSObjectReference>("eval", 
-                    "() => document.querySelector('input[type=file]').files[0]");
+                // Create a stream and convert to blob for JavaScript
+                const int maxAllowedSize = 200 * 1024 * 1024;
+                using var stream = selectedFile.OpenReadStream(maxAllowedSize);
+                using var ms = new MemoryStream();
+                await stream.CopyToAsync(ms);
+                var fileBytes = ms.ToArray();
                 
-                audioDurationSeconds = await JS.InvokeAsync<double>("getAudioDuration", fileRef);
+                // Pass the byte array to JavaScript which will create a Blob
+                audioDurationSeconds = await JS.InvokeAsync<double>("getAudioDuration", 
+                    fileBytes, 
+                    selectedFile.ContentType);
                 
                 Logger.LogInformation("Audio duration detected: {Duration} seconds ({Formatted})", 
                     audioDurationSeconds, FormatDuration((float)audioDurationSeconds));
@@ -465,6 +472,11 @@
         {
             return $"{(int)timeSpan.TotalHours}h {timeSpan.Minutes}m";
         }
-        return $"{timeSpan.Minutes}m";
+        if (timeSpan.TotalMinutes >= 1)
+        {
+            return $"{timeSpan.Minutes}m {timeSpan.Seconds}s";
+        }
+        // Show seconds for very short audio (less than 1 minute)
+        return $"{timeSpan.TotalSeconds:F1}s";
     }
 }
