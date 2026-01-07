@@ -245,23 +245,78 @@ CREATE TABLE TonieCredentials (
 
 ---
 
-### ?? User Story 7: Edit Track Metadata (Future)
+### ? User Story 7: Edit Track Metadata (COMPLETE)
 **As a** BoxieHub user  
-**I want to** edit track names and details  
+**I want to** edit track names and custom Tonie images  
 **So that** I can organize my content better
 
-**Status:** ?? Planned
+**Status:** ? Complete - Sprint 3
+
+**Completed Features:**
+- Inline chapter title editing
+- Custom Tonie image uploads (local storage)
+- Revert to default Tonie Cloud image
+- Optimistic UI updates
+- Validation and error handling
+
+**Branch:** `feature/user-story-7-edit-metadata` ? **MERGED**
 
 ---
 
-## Epic 5: Content Library (Future)
+## Epic 5: Content Library
 
-### ?? User Story 8: Media Library Management (Future)
+### ?? User Story 8: Media Library Management (IN PROGRESS)
 **As a** BoxieHub user  
-**I want to** maintain a library of audio files  
-**So that** I can reuse content across multiple Tonies
+**I want to** maintain a library of audio files with flexible storage options  
+**So that** I can reuse content across multiple Tonies without re-uploading
 
-**Status:** ?? Planned
+**Status:** ?? In Progress - Sprint 4-9
+
+**Scope:** See [Media Library Roadmap](MEDIA_LIBRARY_ROADMAP.md)
+
+**Key Features:**
+1. **Storage Infrastructure** (Phase 1)
+   - S3-compatible storage (MinIO dev, Railway prod)
+   - Storage abstraction layer
+   - Move audio files out of PostgreSQL
+   
+2. **Library Core** (Phase 2-3)
+   - Upload audio to library with metadata
+   - Browse, search, and filter library
+   - Add library items to Creative Tonies
+   - Usage tracking
+   
+3. **External Storage** (Phase 4)
+   - Connect Dropbox accounts (OAuth)
+   - Connect Google Drive accounts (OAuth)
+   - User chooses storage per upload
+   
+4. **Import from URLs** (Phase 6)
+   - Import from YouTube
+   - Import from Podcast RSS feeds
+   - Auto-convert to MP3
+   
+5. **Household Sharing** (Phase 7)
+   - Share library items within household
+   - Permission system (owner vs member)
+   - ? No public/community sharing
+   
+6. **Analytics & Tools** (Phase 8-9)
+   - Library statistics dashboard
+   - Audio preview player
+   - Batch operations
+   - Backup/export library
+
+**Branch:** `feature/user-story-8-media-library`
+
+**Estimated Timeline:** 6-9 weeks (60-80 hours)
+
+**Technical Stack:**
+- MinIO (dev) / Railway S3 (prod)
+- Dropbox.Api SDK
+- Google.Apis.Drive.v3 SDK
+- YoutubeExplode (YouTube downloads)
+- OAuth 2.0 integrations
 
 ---
 
@@ -311,7 +366,7 @@ A user story is considered complete when:
 
 ## Sprint Planning
 
-### Sprint 1 (COMPLETE)
+### Sprint 1 (COMPLETE) ?
 - ? User Story 0: User Registration
 - ? User Story 1: Add Tonie Cloud Account (Database + Encryption implemented)
 
@@ -326,16 +381,67 @@ A user story is considered complete when:
 **Features Delivered:** 6 complete user stories  
 **Test Coverage:** 11 unit tests passing
 
-### Sprint 3 (Next)
-- User Story 7: Edit Track Metadata
-- Infrastructure improvements (logging, error handling)
-- Performance optimizations
+### Sprint 3 (COMPLETE) ?
+- ? **User Story 7**: Edit Track Metadata (Inline chapter editing)
+- ? **User Story 7.5**: Upload Custom Tonie Images
+- ? **User Story 4 Fix**: Continuous drag & drop reordering
+
+**Total Story Points Completed:** 8  
+**Features Delivered:** 3 complete features  
+**Test Coverage:** 113 tests passing, 0 failures
+
+### Sprint 4: Storage Foundation (Week 1) ??
+- [ ] **US 8 - Phase 1**: Storage Infrastructure (MinIO, S3 abstraction)
+- [ ] **US 8 - Phase 2.1**: Upload to Library
+- [ ] **US 8 - Phase 2.2**: Library Index Page
+
+**Estimated:** 15-19 hours  
+**Deliverable:** Users can upload to library, files in S3
+
+### Sprint 5: Core Reusability (Week 2)
+- [ ] **US 8 - Phase 2.3**: Library Item Details
+- [ ] **US 8 - Phase 3**: Add Library Item to Tonie
+- [ ] **US 8 - Phase 5**: Media Download API
+
+**Estimated:** 11-15 hours  
+**Deliverable:** Users can reuse library items on Tonies
+
+### Sprint 6: External Storage (Week 3)
+- [ ] **US 8 - Phase 4**: Dropbox & Google Drive OAuth
+- [ ] **US 8 - Phase 4**: Storage Accounts UI
+
+**Estimated:** 11-16 hours  
+**Deliverable:** Users can connect personal cloud storage
+
+### Sprint 7: External Media (Week 4)
+- [ ] **US 8 - Phase 6**: Import from YouTube
+- [ ] **US 8 - Phase 6**: Import from Podcasts
+
+**Estimated:** 8-12 hours  
+**Deliverable:** Users can import from external sources
+
+### Sprint 8: Sharing & Analytics (Week 5)
+- [ ] **US 8 - Phase 7**: Household Library Sharing
+- [ ] **US 8 - Phase 8**: Statistics Dashboard
+
+**Estimated:** 8-12 hours  
+**Deliverable:** Household sharing and analytics
+
+### Sprint 9: Polish (Week 6)
+- [ ] **US 8 - Phase 9**: Audio Preview Player
+- [ ] **US 8 - Phase 9**: Batch Operations
+- [ ] **US 8 - Phase 9**: Smart Recommendations
+- [ ] **US 8 - Phase 9**: Backup/Export
+
+**Estimated:** 11-15 hours  
+**Deliverable:** Feature-complete media library
 
 ### Future Sprints
-- User Story 8: Media Library Management
-- User Story 9: Family Sharing
+- User Story 9: Family Sharing (cross-user permissions)
 - Infrastructure & Security Tasks
 - CI/CD Pipeline
+- AI Features (auto-tagging, transcription)
+- Advanced Audio Tools (editing, trimming)
 
 ---
 
