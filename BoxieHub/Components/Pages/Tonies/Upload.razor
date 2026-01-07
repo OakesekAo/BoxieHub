@@ -9,6 +9,7 @@
 @inject AuthenticationStateProvider AuthStateProvider
 @inject NavigationManager Navigation
 @inject ILogger<Upload> Logger
+@inject IJSRuntime JS
 @attribute [Authorize]
 
 <PageTitle>Upload Audio - BoxieHub</PageTitle>
@@ -81,7 +82,27 @@
                                 <div class="alert alert-info">
                                     <h6><i class="bi bi-file-earmark-music"></i> Selected File</h6>
                                     <p class="mb-1"><strong>Name:</strong> @selectedFileName</p>
-                                    <p class="mb-0"><strong>Size:</strong> @FormatFileSize(selectedFileSize)</p>
+                                    <p class="mb-1"><strong>Size:</strong> @FormatFileSize(selectedFileSize)</p>
+                                    @if (isCalculatingDuration)
+                                    {
+                                        <p class="mb-0">
+                                            <span class="spinner-border spinner-border-sm me-2"></span>
+                                            <strong>Calculating duration...</strong>
+                                        </p>
+                                    }
+                                    else if (audioDurationSeconds > 0)
+                                    {
+                                        <p class="mb-0">
+                                            <strong>Duration:</strong> @FormatDuration((float)audioDurationSeconds)
+                                            @if (tonie != null)
+                                            {
+                                                var percentUsed = (audioDurationSeconds / tonie.SecondsRemaining) * 100;
+                                                <span class="badge @(percentUsed > 80 ? "bg-warning" : "bg-success") ms-2">
+                                                    @percentUsed.ToString("F1")% of available storage
+                                                </span>
+                                            }
+                                        </p>
+                                    }
                                 </div>
                             }
 
@@ -232,6 +253,8 @@
     private IBrowserFile? selectedFile;
     private string selectedFileName = string.Empty;
     private long selectedFileSize = 0;
+    private double audioDurationSeconds = 0;
+    private bool isCalculatingDuration = false;
 
     private bool CanUpload =>
         !string.IsNullOrWhiteSpace(chapterTitle) &&
@@ -277,6 +300,7 @@
     {
         validationError = null;
         selectedFile = e.File;
+        audioDurationSeconds = 0;
 
         if (selectedFile != null)
         {
@@ -306,6 +330,44 @@
                 selectedFileName = string.Empty;
                 selectedFileSize = 0;
                 return;
+            }
+
+            // Get audio duration using JavaScript
+            try
+            {
+                isCalculatingDuration = true;
+                StateHasChanged();
+
+                var fileRef = await JS.InvokeAsync<IJSObjectReference>("eval", 
+                    "() => document.querySelector('input[type=file]').files[0]");
+                
+                audioDurationSeconds = await JS.InvokeAsync<double>("getAudioDuration", fileRef);
+                
+                Logger.LogInformation("Audio duration detected: {Duration} seconds ({Formatted})", 
+                    audioDurationSeconds, FormatDuration((float)audioDurationSeconds));
+
+                // Validate duration against available storage
+                if (tonie != null && audioDurationSeconds > tonie.SecondsRemaining)
+                {
+                    var durationFormatted = FormatDuration((float)audioDurationSeconds);
+                    var availableFormatted = FormatDuration(tonie.SecondsRemaining);
+                    validationError = $"Audio duration ({durationFormatted}) exceeds available storage ({availableFormatted}).";
+                    selectedFile = null;
+                    selectedFileName = string.Empty;
+                    selectedFileSize = 0;
+                    audioDurationSeconds = 0;
+                    return;
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.LogWarning(ex, "Failed to get audio duration, will proceed without validation");
+                // Don't block upload if duration detection fails
+                audioDurationSeconds = 0;
+            }
+            finally
+            {
+                isCalculatingDuration = false;
             }
 
             // Auto-fill title if empty
@@ -378,6 +440,7 @@
         selectedFile = null;
         selectedFileName = string.Empty;
         selectedFileSize = 0;
+        audioDurationSeconds = 0;
         validationError = null;
         uploadResult = null;
     }
