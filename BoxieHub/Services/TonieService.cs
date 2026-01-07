@@ -28,7 +28,7 @@ public interface ITonieService
     /// <summary>
     /// Get detailed information for a specific Tonie from database or API
     /// </summary>
-    Task<CreativeTonieDto> GetCreativeTonieDetailsAsync(string userId, string householdExternalId, string tonieId, CancellationToken ct = default);
+    Task<CreativeTonieDto> GetCreativeTonieDetailsAsync(string userId, string householdExternalId, string tonieId, bool forceRefresh = false, CancellationToken ct = default);
     
     /// <summary>
     /// Upload audio file to a Creative Tonie and refresh cache
@@ -140,24 +140,32 @@ public class TonieService : ITonieService
         string userId,
         string householdExternalId,
         string tonieId,
+        bool forceRefresh = false,
         CancellationToken ct = default)
     {
         await using var dbContext = await _dbContextFactory.CreateDbContextAsync(ct);
 
-        // Try to get from database first
-        var character = await dbContext.Characters
-            .FirstOrDefaultAsync(c => 
-                c.ExternalCharacterId == tonieId && 
-                c.Type == CharacterType.Creative &&
-                c.Household!.ExternalId == householdExternalId, ct);
-
-        if (character != null && !character.IsStale)
+        // Try to get from database first (unless force refresh)
+        Character? character = null;
+        if (!forceRefresh)
         {
-            _logger.LogDebug("Returning cached Tonie details for {TonieId}", tonieId);
-            return CharacterToDto(character);
+            character = await dbContext.Characters
+                .FirstOrDefaultAsync(c => 
+                    c.ExternalCharacterId == tonieId && 
+                    c.Type == CharacterType.Creative &&
+                    c.Household!.ExternalId == householdExternalId, ct);
+
+            if (character != null && !character.IsStale)
+            {
+                _logger.LogDebug("Returning cached Tonie details for {TonieId}", tonieId);
+                return CharacterToDto(character);
+            }
         }
 
-        // Fetch from API
+        // Fetch from API (either forced or cache was stale/missing)
+        _logger.LogInformation("Fetching Tonie details from API for {TonieId} (forceRefresh: {ForceRefresh})", 
+            tonieId, forceRefresh);
+        
         var credentials = await GetUserCredentialsAsync(userId);
         var tonie = await _boxieCloudClient.GetCreativeTonieDetailsAsync(
             credentials.Username,
@@ -166,7 +174,13 @@ public class TonieService : ITonieService
             tonieId,
             ct);
 
-        // Update database
+        // Update database if character exists, otherwise find it again
+        if (character == null)
+        {
+            character = await dbContext.Characters
+                .FirstOrDefaultAsync(c => c.ExternalCharacterId == tonieId, ct);
+        }
+
         if (character != null)
         {
             UpdateCharacterFromDto(character, tonie);
@@ -433,7 +447,14 @@ public class TonieService : ITonieService
     public async Task DeleteAccountDataAsync(int credentialId, CancellationToken ct = default)
     {
         await using var dbContext = await _dbContextFactory.CreateDbContextAsync(ct);
-        
+        await DeleteAccountDataAsync(credentialId, dbContext, ct);
+    }
+
+    /// <summary>
+    /// Internal method to delete account data with provided context (for testing)
+    /// </summary>
+    private async Task DeleteAccountDataAsync(int credentialId, ApplicationDbContext dbContext, CancellationToken ct = default)
+    {
         // Get the credential to verify it exists and get the user
         var credential = await dbContext.TonieCredentials
             .FirstOrDefaultAsync(c => c.Id == credentialId, ct);

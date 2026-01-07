@@ -1,0 +1,397 @@
+@rendermode InteractiveServer
+@page "/tonies/{householdId}/{tonieId}/upload"
+@using BoxieHub.Models.BoxieCloud
+@using BoxieHub.Services
+@using BoxieHub.Helpers
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Authorization
+@inject ITonieService TonieService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Navigation
+@inject ILogger<Upload> Logger
+@attribute [Authorize]
+
+<PageTitle>Upload Audio - BoxieHub</PageTitle>
+
+<div class="container mt-4">
+    @if (isLoading)
+    {
+        <div class="text-center py-5">
+            <div class="spinner-border spinner-border-lg text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <p class="mt-3 text-muted">Loading Tonie details...</p>
+        </div>
+    }
+    else if (!string.IsNullOrEmpty(errorMessage))
+    {
+        <div class="alert alert-danger">
+            <h5><i class="bi bi-exclamation-triangle-fill"></i> Error</h5>
+            <p>@errorMessage</p>
+            <a href="/tonies/@HouseholdId/@TonieId" class="btn btn-secondary">
+                <i class="bi bi-arrow-left"></i> Back to Tonie
+            </a>
+        </div>
+    }
+    else if (tonie != null)
+    {
+        <!-- Breadcrumb -->
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="/tonies">My Tonies</a></li>
+                <li class="breadcrumb-item"><a href="/tonies/@HouseholdId/@TonieId">@tonie.Name</a></li>
+                <li class="breadcrumb-item active">Upload Audio</li>
+            </ol>
+        </nav>
+
+        <div class="card shadow">
+            <div class="card-header bg-primary text-white">
+                <h3 class="mb-0">
+                    <i class="bi bi-upload"></i> Upload Audio to @tonie.Name
+                </h3>
+            </div>
+            <div class="card-body">
+                @if (!isUploading && uploadResult == null)
+                {
+                    <!-- Upload Form -->
+                    <div class="row">
+                        <div class="col-md-8">
+                            <div class="mb-4">
+                                <label class="form-label">Chapter Title *</label>
+                                <input type="text" 
+                                       class="form-control" 
+                                       @bind="chapterTitle" 
+                                       placeholder="Enter chapter title"
+                                       maxlength="100" />
+                                <small class="text-muted">Give your chapter a descriptive name</small>
+                            </div>
+
+                            <div class="mb-4">
+                                <label class="form-label">Audio File *</label>
+                                <InputFile OnChange="HandleFileSelected" 
+                                          class="form-control" 
+                                          accept=".mp3,.m4a,.ogg,.wav" />
+                                <small class="text-muted">
+                                    <i class="bi bi-info-circle"></i> Supported formats: MP3, M4A, OGG, WAV (Max: 200 MB)
+                                </small>
+                            </div>
+
+                            @if (selectedFile != null)
+                            {
+                                <div class="alert alert-info">
+                                    <h6><i class="bi bi-file-earmark-music"></i> Selected File</h6>
+                                    <p class="mb-1"><strong>Name:</strong> @selectedFileName</p>
+                                    <p class="mb-0"><strong>Size:</strong> @FormatFileSize(selectedFileSize)</p>
+                                </div>
+                            }
+
+                            @if (!string.IsNullOrEmpty(validationError))
+                            {
+                                <div class="alert alert-danger">
+                                    <i class="bi bi-exclamation-triangle-fill"></i> @validationError
+                                </div>
+                            }
+                        </div>
+                        <div class="col-md-4">
+                            <div class="card bg-light">
+                                <div class="card-body">
+                                    <h6 class="card-title">Tonie Storage</h6>
+                                    <p class="mb-2">
+                                        <strong>Available:</strong> @FormatDuration(tonie.SecondsRemaining)
+                                    </p>
+                                    <p class="mb-2">
+                                        <strong>Used:</strong> @FormatDuration(tonie.SecondsPresent)
+                                    </p>
+                                    <p class="mb-0">
+                                        <strong>Chapters:</strong> @tonie.ChaptersPresent / @(tonie.ChaptersPresent + tonie.ChaptersRemaining)
+                                    </p>
+                                    
+                                    @if (tonie.SecondsRemaining < 5400)
+                                    {
+                                        <div class="alert alert-warning mt-3 mb-0">
+                                            <small>
+                                                <i class="bi bi-exclamation-circle"></i>
+                                                Limited storage available
+                                            </small>
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="d-flex gap-2 mt-4">
+                        <button class="btn btn-primary" 
+                                @onclick="StartUpload"
+                                disabled="@(!CanUpload)">
+                            <i class="bi bi-upload"></i> Upload
+                        </button>
+                        <a href="/tonies/@HouseholdId/@TonieId" class="btn btn-secondary">
+                            <i class="bi bi-x-lg"></i> Cancel
+                        </a>
+                    </div>
+                }
+                else if (isUploading)
+                {
+                    <!-- Upload Progress -->
+                    <div class="text-center py-5">
+                        <div class="spinner-border text-primary mb-3" style="width: 3rem; height: 3rem;" role="status">
+                            <span class="visually-hidden">Uploading...</span>
+                        </div>
+                        <h5>Uploading "@chapterTitle"</h5>
+                        <p class="text-muted">
+                            Please wait while we upload and process your audio file.<br />
+                            This may take a few minutes depending on the file size.
+                        </p>
+                        <div class="progress" style="height: 30px;">
+                            <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                                 role="progressbar" 
+                                 style="width: 100%">
+                                Processing...
+                            </div>
+                        </div>
+                    </div>
+                }
+                else if (uploadResult != null)
+                {
+                    <!-- Upload Result -->
+                    @if (uploadResult.Success)
+                    {
+                        <div class="alert alert-success">
+                            <h5><i class="bi bi-check-circle-fill"></i> Upload Successful!</h5>
+                            <p>@uploadResult.Message</p>
+                            @if (uploadResult.TracksProcessed > 0)
+                            {
+                                <p class="mb-0">
+                                    <strong>Tracks processed:</strong> @uploadResult.TracksProcessed
+                                </p>
+                            }
+                        </div>
+                        <div class="d-flex gap-2">
+                            <a href="/tonies/@HouseholdId/@TonieId" class="btn btn-primary">
+                                <i class="bi bi-arrow-left"></i> Back to Tonie
+                            </a>
+                            <button class="btn btn-outline-primary" @onclick="ResetUpload">
+                                <i class="bi bi-plus-lg"></i> Upload Another
+                            </button>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="alert alert-danger">
+                            <h5><i class="bi bi-x-circle-fill"></i> Upload Failed</h5>
+                            <p>@uploadResult.Message</p>
+                            @if (!string.IsNullOrEmpty(uploadResult.ErrorDetails))
+                            {
+                                <details class="mt-2">
+                                    <summary class="text-muted" style="cursor: pointer;">Technical Details</summary>
+                                    <pre class="mt-2 p-2 bg-light border rounded small">@uploadResult.ErrorDetails</pre>
+                                </details>
+                            }
+                        </div>
+                        <div class="d-flex gap-2">
+                            <button class="btn btn-primary" @onclick="ResetUpload">
+                                <i class="bi bi-arrow-clockwise"></i> Try Again
+                            </button>
+                            <a href="/tonies/@HouseholdId/@TonieId" class="btn btn-secondary">
+                                <i class="bi bi-x-lg"></i> Cancel
+                            </a>
+                        </div>
+                    }
+                }
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public string HouseholdId { get; set; } = string.Empty;
+
+    [Parameter]
+    public string TonieId { get; set; } = string.Empty;
+
+    private CreativeTonieDto? tonie;
+    private bool isLoading = true;
+    private bool isUploading = false;
+    private string? errorMessage;
+    private string? validationError;
+    private SyncResultDto? uploadResult;
+
+    private string chapterTitle = string.Empty;
+    private IBrowserFile? selectedFile;
+    private string selectedFileName = string.Empty;
+    private long selectedFileSize = 0;
+
+    private bool CanUpload =>
+        !string.IsNullOrWhiteSpace(chapterTitle) &&
+        selectedFile != null &&
+        string.IsNullOrEmpty(validationError);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadTonieDetails();
+    }
+
+    private async Task LoadTonieDetails()
+    {
+        isLoading = true;
+        errorMessage = null;
+
+        try
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var userId = authState.User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+            if (string.IsNullOrEmpty(userId))
+            {
+                errorMessage = "User not authenticated";
+                return;
+            }
+
+            tonie = await TonieService.GetCreativeTonieDetailsAsync(userId, HouseholdId, TonieId);
+            Logger.LogInformation("Loaded Tonie details for upload: {TonieId}", TonieId);
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Failed to load Tonie details: {ex.Message}";
+            Logger.LogError(ex, "Error loading Tonie details for {TonieId}", TonieId);
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task HandleFileSelected(InputFileChangeEventArgs e)
+    {
+        validationError = null;
+        selectedFile = e.File;
+
+        if (selectedFile != null)
+        {
+            // Store file info immediately
+            selectedFileName = selectedFile.Name;
+            selectedFileSize = selectedFile.Size;
+
+            // Validate file extension
+            var extension = Path.GetExtension(selectedFile.Name).ToLowerInvariant();
+            var allowedExtensions = new[] { ".mp3", ".m4a", ".ogg", ".wav" };
+
+            if (!allowedExtensions.Contains(extension))
+            {
+                validationError = $"Invalid file format. Please upload MP3, M4A, OGG, or WAV files.";
+                selectedFile = null;
+                selectedFileName = string.Empty;
+                selectedFileSize = 0;
+                return;
+            }
+
+            // Check file size
+            const long maxSizeBytes = 200 * 1024 * 1024; // 200MB
+            if (selectedFile.Size > maxSizeBytes)
+            {
+                validationError = $"File too large. Maximum size is {FormatFileSize(maxSizeBytes)}.";
+                selectedFile = null;
+                selectedFileName = string.Empty;
+                selectedFileSize = 0;
+                return;
+            }
+
+            // Auto-fill title if empty
+            if (string.IsNullOrWhiteSpace(chapterTitle))
+            {
+                chapterTitle = Path.GetFileNameWithoutExtension(selectedFile.Name);
+            }
+        }
+    }
+
+    private async Task StartUpload()
+    {
+        if (!CanUpload || selectedFile == null) return;
+
+        isUploading = true;
+        uploadResult = null;
+
+        try
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var userId = authState.User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+            if (string.IsNullOrEmpty(userId))
+            {
+                validationError = "User not authenticated";
+                isUploading = false;
+                return;
+            }
+
+            // Open file stream
+            using var stream = selectedFile.OpenReadStream(maxAllowedSize: 200 * 1024 * 1024);
+
+            // Upload to Tonie Cloud
+            uploadResult = await TonieService.UploadAudioToTonieAsync(
+                userId,
+                HouseholdId,
+                TonieId,
+                stream,
+                chapterTitle);
+
+            if (uploadResult.Success)
+            {
+                Logger.LogInformation("Successfully uploaded '{Title}' to Tonie {TonieId}", chapterTitle, TonieId);
+            }
+            else
+            {
+                Logger.LogWarning("Upload failed for '{Title}': {Error}", chapterTitle, uploadResult.ErrorDetails);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error uploading audio file");
+            uploadResult = new SyncResultDto
+            {
+                Success = false,
+                Message = "Upload failed",
+                ErrorDetails = ex.Message
+            };
+        }
+        finally
+        {
+            isUploading = false;
+            selectedFile = null;
+        }
+    }
+
+    private void ResetUpload()
+    {
+        chapterTitle = string.Empty;
+        selectedFile = null;
+        selectedFileName = string.Empty;
+        selectedFileSize = 0;
+        validationError = null;
+        uploadResult = null;
+    }
+
+    private string FormatFileSize(long bytes)
+    {
+        string[] sizes = { "B", "KB", "MB", "GB" };
+        double len = bytes;
+        int order = 0;
+        while (len >= 1024 && order < sizes.Length - 1)
+        {
+            order++;
+            len = len / 1024;
+        }
+        return $"{len:0.##} {sizes[order]}";
+    }
+
+    private string FormatDuration(float seconds)
+    {
+        var timeSpan = TimeSpan.FromSeconds(seconds);
+        if (timeSpan.TotalHours >= 1)
+        {
+            return $"{(int)timeSpan.TotalHours}h {timeSpan.Minutes}m";
+        }
+        return $"{timeSpan.Minutes}m";
+    }
+}
