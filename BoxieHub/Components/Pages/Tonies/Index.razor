@@ -94,6 +94,20 @@
         </div>
     }
 
+    @if (isStaleData && !isLoading)
+    {
+        <div class="alert alert-warning alert-dismissible fade show" role="alert">
+            <h5><i class="bi bi-clock-history"></i> Your data might be outdated</h5>
+            <p>
+                Your Tonie data is more than a day old. Click refresh to get the latest information from Tonie Cloud.
+            </p>
+            <button class="btn btn-warning btn-sm" @onclick="RefreshData">
+                <i class="bi bi-arrow-clockwise"></i> Refresh Now
+            </button>
+            <button type="button" class="btn-close" @onclick="() => isStaleData = false"></button>
+        </div>
+    }
+
     @if (isLoading)
     {
         <div class="text-center py-5">
@@ -175,16 +189,17 @@
 </style>
 
 @code {
-private List<BoxieHub.Models.BoxieCloud.CreativeTonieDto>? tonies;
-private TonieStatsViewModel? stats;
-private bool isLoading = true;
-private string? errorMessage;
-private string? errorDetails;
+    private List<BoxieHub.Models.BoxieCloud.CreativeTonieDto>? tonies;
+    private TonieStatsViewModel? stats;
+    private bool isLoading = true;
+    private bool isStaleData = false;
+    private string? errorMessage;
+    private string? errorDetails;
 
-protected override async Task OnInitializedAsync()
-{
-    await LoadData();
-}
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
 
     private async Task LoadData()
     {
@@ -204,8 +219,10 @@ protected override async Task OnInitializedAsync()
                 return;
             }
 
-            // Load Tonies (single API call)
-            tonies = await TonieService.GetUserCreativeTonieAsync(userId);
+            // Load Tonies from database (API only if no data exists)
+            var (loadedTonies, isStale) = await TonieService.GetUserCreativeTonieAsync(userId, forceRefresh: false);
+            tonies = loadedTonies;
+            isStaleData = isStale;
             
             // Calculate stats from the loaded Tonies (no additional API call or DbContext access)
             stats = new TonieStatsViewModel
@@ -217,7 +234,7 @@ protected override async Task OnInitializedAsync()
                 TotalDuration = TimeSpan.FromSeconds(tonies.Sum(t => t.SecondsPresent))
             };
 
-            Logger.LogInformation("Loaded {Count} Tonies for user {UserId}", tonies.Count, userId);
+            Logger.LogInformation("Loaded {Count} Tonies for user {UserId} (stale: {IsStale})", tonies.Count, userId, isStale);
         }
         catch (InvalidOperationException ex) when (ex.Message.Contains("No default Tonie Cloud account"))
         {
@@ -244,6 +261,7 @@ protected override async Task OnInitializedAsync()
         isLoading = true;
         errorMessage = null;
         errorDetails = null;
+        isStaleData = false;
         
         try
         {
@@ -256,8 +274,9 @@ protected override async Task OnInitializedAsync()
                 return;
             }
 
-            // Force refresh - bypass cache
-            tonies = await TonieService.GetUserCreativeTonieAsync(userId, forceRefresh: true);
+            // Force refresh - fetch from API
+            var (loadedTonies, _) = await TonieService.GetUserCreativeTonieAsync(userId, forceRefresh: true);
+            tonies = loadedTonies;
             
             // Calculate stats from the loaded Tonies
             stats = new TonieStatsViewModel

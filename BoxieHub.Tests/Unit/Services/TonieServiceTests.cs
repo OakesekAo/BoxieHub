@@ -5,7 +5,6 @@ using BoxieHub.Services;
 using BoxieHub.Services.BoxieCloud;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using Moq;
 using Xunit;
@@ -18,7 +17,6 @@ public class TonieServiceTests : IDisposable
     private readonly Mock<ICredentialEncryptionService> _mockEncryption;
     private readonly Mock<IDbContextFactory<ApplicationDbContext>> _mockDbContextFactory;
     private readonly ApplicationDbContext _dbContext;
-    private readonly IMemoryCache _cache;
     private readonly Mock<ILogger<TonieService>> _mockLogger;
     private readonly TonieService _service;
     private readonly string _testUserId = "test-user-123";
@@ -31,9 +29,6 @@ public class TonieServiceTests : IDisposable
             .Options;
         _dbContext = new ApplicationDbContext(options);
 
-        // Setup memory cache
-        _cache = new MemoryCache(new MemoryCacheOptions());
-
         // Setup mocks
         _mockBoxieClient = new Mock<IBoxieCloudClient>();
         _mockEncryption = new Mock<ICredentialEncryptionService>();
@@ -44,12 +39,11 @@ public class TonieServiceTests : IDisposable
         _mockDbContextFactory.Setup(x => x.CreateDbContextAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(_dbContext);
 
-        // Create service
+        // Create service (no IMemoryCache needed)
         _service = new TonieService(
             _mockBoxieClient.Object,
             _mockEncryption.Object,
             _mockDbContextFactory.Object,
-            _cache,
             _mockLogger.Object);
     }
 
@@ -78,7 +72,7 @@ public class TonieServiceTests : IDisposable
             .ReturnsAsync(tonies);
 
         // Act
-        var result = await _service.GetUserCreativeTonieAsync(_testUserId);
+        var (result, isStale) = await _service.GetUserCreativeTonieAsync(_testUserId);
 
         // Assert
         result.Should().HaveCount(2);
@@ -121,7 +115,7 @@ public class TonieServiceTests : IDisposable
             .ReturnsAsync(tonies2);
 
         // Act
-        var result = await _service.GetUserCreativeTonieAsync(_testUserId);
+        var (result, isStale) = await _service.GetUserCreativeTonieAsync(_testUserId);
 
         // Assert
         result.Should().HaveCount(3);

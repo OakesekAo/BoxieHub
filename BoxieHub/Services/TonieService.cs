@@ -2,39 +2,23 @@ using BoxieHub.Data;
 using BoxieHub.Models;
 using BoxieHub.Models.BoxieCloud;
 using BoxieHub.Services.BoxieCloud;
+using BoxieHub.Client.Models.Enums;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Caching.Memory;
-using System.Security.Claims;
+using System.Text.Json;
 
 namespace BoxieHub.Services;
 
 /// <summary>
 /// Business logic service for managing Creative Tonies
-/// Provides high-level operations with automatic credential management
+/// Database-first architecture with smart API sync
 /// </summary>
 public interface ITonieService
 {
     /// <summary>
-    /// Get all Creative Tonies for the authenticated user (from default account)
-    /// Results are cached for 5 minutes to reduce API calls
+    /// Get all Creative Tonies for the authenticated user from DATABASE
+    /// Only fetches from API if data is missing or forceRefresh is true
     /// </summary>
-    /// <param name="forceRefresh">If true, bypasses cache and fetches fresh data</param>
-    Task<List<CreativeTonieDto>> GetUserCreativeTonieAsync(string userId, bool forceRefresh = false, CancellationToken ct = default);
-    
-    /// <summary>
-    /// Get all households for the authenticated user
-    /// </summary>
-    Task<List<HouseholdDto>> GetUserHouseholdsAsync(string userId, CancellationToken ct = default);
-    
-    /// <summary>
-    /// Get Creative Tonies for a specific household
-    /// </summary>
-    Task<List<CreativeTonieDto>> GetCreativeToniesByHouseholdAsync(string userId, string householdId, CancellationToken ct = default);
-    
-    /// <summary>
-    /// Get detailed information for a specific Tonie
-    /// </summary>
-    Task<CreativeTonieDto> GetCreativeTonieDetailsAsync(string userId, string householdId, string tonieId, CancellationToken ct = default);
+    Task<(List<CreativeTonieDto> Tonies, bool IsStale)> GetUserCreativeTonieAsync(string userId, bool forceRefresh = false, CancellationToken ct = default);
     
     /// <summary>
     /// Get aggregated statistics for all user's Tonies
@@ -42,7 +26,12 @@ public interface ITonieService
     Task<TonieStatsViewModel> GetUserStatsAsync(string userId, CancellationToken ct = default);
     
     /// <summary>
-    /// Upload audio file to a Creative Tonie
+    /// Get detailed information for a specific Tonie from database or API
+    /// </summary>
+    Task<CreativeTonieDto> GetCreativeTonieDetailsAsync(string userId, string householdExternalId, string tonieId, CancellationToken ct = default);
+    
+    /// <summary>
+    /// Upload audio file to a Creative Tonie and refresh cache
     /// </summary>
     Task<SyncResultDto> UploadAudioToTonieAsync(
         string userId, 
@@ -53,7 +42,7 @@ public interface ITonieService
         CancellationToken ct = default);
     
     /// <summary>
-    /// Delete a chapter from a Creative Tonie
+    /// Delete a chapter from a Creative Tonie and refresh cache
     /// </summary>
     Task<bool> DeleteChapterAsync(
         string userId, 
@@ -61,11 +50,6 @@ public interface ITonieService
         string tonieId, 
         string chapterId, 
         CancellationToken ct = default);
-        
-    /// <summary>
-    /// Clear cached Tonie data for a user (call after uploads/deletes)
-    /// </summary>
-    void ClearUserCache(string userId);
 }
 
 public class TonieService : ITonieService
@@ -73,188 +57,117 @@ public class TonieService : ITonieService
     private readonly IBoxieCloudClient _boxieCloudClient;
     private readonly ICredentialEncryptionService _encryption;
     private readonly IDbContextFactory<ApplicationDbContext> _dbContextFactory;
-    private readonly IMemoryCache _cache;
     private readonly ILogger<TonieService> _logger;
-    
-    private static readonly TimeSpan CacheDuration = TimeSpan.FromMinutes(5);
-    private const string CacheKeyPrefix = "tonies_user_";
 
     public TonieService(
         IBoxieCloudClient boxieCloudClient,
         ICredentialEncryptionService encryption,
         IDbContextFactory<ApplicationDbContext> dbContextFactory,
-        IMemoryCache cache,
         ILogger<TonieService> logger)
     {
         _boxieCloudClient = boxieCloudClient;
         _encryption = encryption;
         _dbContextFactory = dbContextFactory;
-        _cache = cache;
         _logger = logger;
     }
 
-    public async Task<List<CreativeTonieDto>> GetUserCreativeTonieAsync(string userId, bool forceRefresh = false, CancellationToken ct = default)
-    {
-        var cacheKey = $"{CacheKeyPrefix}{userId}";
-        
-        // Return cached data if available and not forcing refresh
-        if (!forceRefresh && _cache.TryGetValue(cacheKey, out List<CreativeTonieDto>? cachedTonies) && cachedTonies != null)
-        {
-            _logger.LogDebug("Returning cached Tonies for user {UserId} ({Count} tonies)", userId, cachedTonies.Count);
-            return cachedTonies;
-        }
-        
-        _logger.LogDebug("Fetching fresh Tonie data for user {UserId} (forceRefresh: {ForceRefresh})", userId, forceRefresh);
-        
-        var credentials = await GetUserCredentialsAsync(userId);
-        _logger.LogDebug("Retrieved credentials for {Username}", credentials.Username);
-        
-        var allTonies = new List<CreativeTonieDto>();
-
-        try
-        {
-            // Get households
-            _logger.LogDebug("Fetching households for {Username}", credentials.Username);
-            var households = await _boxieCloudClient.GetHouseholdsAsync(
-                credentials.Username, 
-                credentials.Password, 
-                ct);
-            _logger.LogInformation("Retrieved {Count} household(s) for user {UserId}", households.Count, userId);
-
-            // Get Tonies from all households
-            foreach (var household in households)
-            {
-                _logger.LogDebug("Fetching Tonies for household {HouseholdId} ({HouseholdName})", 
-                    household.Id, household.Name);
-                
-                var tonies = await _boxieCloudClient.GetCreativeToniesByHouseholdAsync(
-                    credentials.Username,
-                    credentials.Password,
-                    household.Id,
-                    ct);
-                
-                _logger.LogDebug("Retrieved {Count} Tonies from household {HouseholdId}", 
-                    tonies.Count, household.Id);
-
-                allTonies.AddRange(tonies);
-            }
-
-            // Cache the results
-            _cache.Set(cacheKey, allTonies, CacheDuration);
-            _logger.LogInformation("Cached {TotalCount} Creative Tonies for user {UserId} (expires in {Minutes} minutes)", 
-                allTonies.Count, userId, CacheDuration.TotalMinutes);
-
-            return allTonies;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error getting Creative Tonies for user {UserId}. Error: {ErrorMessage}", 
-                userId, ex.Message);
-            throw;
-        }
-    }
-
-    public async Task<List<HouseholdDto>> GetUserHouseholdsAsync(string userId, CancellationToken ct = default)
-    {
-        var credentials = await GetUserCredentialsAsync(userId);
-
-        try
-        {
-            var households = await _boxieCloudClient.GetHouseholdsAsync(
-                credentials.Username,
-                credentials.Password,
-                ct);
-
-            _logger.LogInformation("Retrieved {Count} household(s) for user {UserId}", households.Count, userId);
-            return households;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error getting households for user {UserId}", userId);
-            throw;
-        }
-    }
-
-    public async Task<List<CreativeTonieDto>> GetCreativeToniesByHouseholdAsync(
+    public async Task<(List<CreativeTonieDto> Tonies, bool IsStale)> GetUserCreativeTonieAsync(
         string userId, 
-        string householdId, 
+        bool forceRefresh = false, 
         CancellationToken ct = default)
     {
-        var credentials = await GetUserCredentialsAsync(userId);
+        await using var dbContext = await _dbContextFactory.CreateDbContextAsync(ct);
+        
+        // Get user's households from database
+        var households = await dbContext.Households
+            .Include(h => h.Characters.Where(c => c.Type == CharacterType.Creative))
+            .ToListAsync(ct);
 
-        try
+        bool hasData = households.Any() && households.Any(h => h.Characters.Any());
+        bool isStale = households.Any(h => h.IsStale);
+
+        // If no data or force refresh, fetch from API
+        if (!hasData || forceRefresh)
         {
-            var tonies = await _boxieCloudClient.GetCreativeToniesByHouseholdAsync(
-                credentials.Username,
-                credentials.Password,
-                householdId,
-                ct);
-
-            _logger.LogInformation("Retrieved {Count} Creative Tonies for household {HouseholdId}", 
-                tonies.Count, householdId);
-            return tonies;
+            _logger.LogInformation("Fetching Tonies from API for user {UserId} (forceRefresh: {ForceRefresh}, hasData: {HasData})", 
+                userId, forceRefresh, hasData);
+            
+            await SyncTonieDataFromApiAsync(userId, dbContext, ct);
+            
+            // Re-query after sync
+            households = await dbContext.Households
+                .Include(h => h.Characters.Where(c => c.Type == CharacterType.Creative))
+                .ToListAsync(ct);
+            
+            isStale = false; // Fresh data
         }
-        catch (Exception ex)
+        else
         {
-            _logger.LogError(ex, "Error getting Creative Tonies for household {HouseholdId}", householdId);
-            throw;
+            _logger.LogDebug("Returning cached Tonies for user {UserId} (stale: {IsStale})", userId, isStale);
         }
-    }
 
-    public async Task<CreativeTonieDto> GetCreativeTonieDetailsAsync(
-        string userId, 
-        string householdId, 
-        string tonieId, 
-        CancellationToken ct = default)
-    {
-        var credentials = await GetUserCredentialsAsync(userId);
+        // Convert to DTOs
+        var tonies = households
+            .SelectMany(h => h.Characters.Where(c => c.Type == CharacterType.Creative))
+            .Select(CharacterToDto)
+            .ToList();
 
-        try
-        {
-            var tonie = await _boxieCloudClient.GetCreativeTonieDetailsAsync(
-                credentials.Username,
-                credentials.Password,
-                householdId,
-                tonieId,
-                ct);
-
-            _logger.LogInformation("Retrieved details for Tonie {TonieId} with {ChapterCount} chapters", 
-                tonieId, tonie.Chapters?.Count ?? 0);
-            return tonie;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error getting details for Tonie {TonieId}", tonieId);
-            throw;
-        }
+        return (tonies, isStale);
     }
 
     public async Task<TonieStatsViewModel> GetUserStatsAsync(string userId, CancellationToken ct = default)
     {
-        try
+        var (tonies, _) = await GetUserCreativeTonieAsync(userId, forceRefresh: false, ct);
+
+        return new TonieStatsViewModel
         {
-            // Get Tonies (will use cache if available)
-            var tonies = await GetUserCreativeTonieAsync(userId, forceRefresh: false, ct);
+            TotalTonies = tonies.Count,
+            TotalChapters = tonies.Sum(t => t.ChaptersPresent),
+            TotalSecondsPresent = tonies.Sum(t => t.SecondsPresent),
+            TotalSecondsRemaining = tonies.Sum(t => t.SecondsRemaining),
+            TotalDuration = TimeSpan.FromSeconds(tonies.Sum(t => t.SecondsPresent))
+        };
+    }
 
-            var stats = new TonieStatsViewModel
-            {
-                TotalTonies = tonies.Count,
-                TotalChapters = tonies.Sum(t => t.ChaptersPresent),
-                TotalSecondsPresent = tonies.Sum(t => t.SecondsPresent),
-                TotalSecondsRemaining = tonies.Sum(t => t.SecondsRemaining),
-                TotalDuration = TimeSpan.FromSeconds(tonies.Sum(t => t.SecondsPresent))
-            };
+    public async Task<CreativeTonieDto> GetCreativeTonieDetailsAsync(
+        string userId,
+        string householdExternalId,
+        string tonieId,
+        CancellationToken ct = default)
+    {
+        await using var dbContext = await _dbContextFactory.CreateDbContextAsync(ct);
 
-            _logger.LogInformation("Calculated stats for user {UserId}: {TotalTonies} Tonies, {TotalChapters} chapters", 
-                userId, stats.TotalTonies, stats.TotalChapters);
+        // Try to get from database first
+        var character = await dbContext.Characters
+            .FirstOrDefaultAsync(c => 
+                c.ExternalCharacterId == tonieId && 
+                c.Type == CharacterType.Creative &&
+                c.Household!.ExternalId == householdExternalId, ct);
 
-            return stats;
-        }
-        catch (Exception ex)
+        if (character != null && !character.IsStale)
         {
-            _logger.LogError(ex, "Error calculating stats for user {UserId}", userId);
-            throw;
+            _logger.LogDebug("Returning cached Tonie details for {TonieId}", tonieId);
+            return CharacterToDto(character);
         }
+
+        // Fetch from API
+        var credentials = await GetUserCredentialsAsync(userId);
+        var tonie = await _boxieCloudClient.GetCreativeTonieDetailsAsync(
+            credentials.Username,
+            credentials.Password,
+            householdExternalId,
+            tonieId,
+            ct);
+
+        // Update database
+        if (character != null)
+        {
+            UpdateCharacterFromDto(character, tonie);
+            character.LastSyncedAt = DateTimeOffset.UtcNow;
+            await dbContext.SaveChangesAsync(ct);
+        }
+
+        return tonie;
     }
 
     public async Task<SyncResultDto> UploadAudioToTonieAsync(
@@ -280,16 +193,10 @@ public class TonieService : ITonieService
 
             if (result.Success)
             {
-                _logger.LogInformation("Successfully uploaded audio '{Title}' to Tonie {TonieId} for user {UserId}",
-                    chapterTitle, tonieId, userId);
+                _logger.LogInformation("Successfully uploaded audio '{Title}' to Tonie {TonieId}", chapterTitle, tonieId);
                 
-                // Clear cache to force refresh on next load
-                ClearUserCache(userId);
-            }
-            else
-            {
-                _logger.LogWarning("Failed to upload audio '{Title}' to Tonie {TonieId}: {Error}",
-                    chapterTitle, tonieId, result.ErrorDetails);
+                // Refresh this specific Tonie from API
+                await RefreshTonieFromApiAsync(userId, householdId, tonieId, ct);
             }
 
             return result;
@@ -318,7 +225,6 @@ public class TonieService : ITonieService
 
         try
         {
-            // Get current Tonie data
             var tonie = await _boxieCloudClient.GetCreativeTonieDetailsAsync(
                 credentials.Username,
                 credentials.Password,
@@ -326,7 +232,6 @@ public class TonieService : ITonieService
                 tonieId,
                 ct);
 
-            // Remove the chapter
             var updatedChapters = tonie.Chapters?
                 .Where(c => c.Id != chapterId)
                 .ToList() ?? new List<ChapterDto>();
@@ -337,7 +242,6 @@ public class TonieService : ITonieService
                 return false;
             }
 
-            // Update Tonie with remaining chapters
             await _boxieCloudClient.PatchCreativeTonieAsync(
                 credentials.Username,
                 credentials.Password,
@@ -347,30 +251,176 @@ public class TonieService : ITonieService
                 updatedChapters,
                 ct);
 
-            _logger.LogInformation("Successfully deleted chapter {ChapterId} from Tonie {TonieId}", 
-                chapterId, tonieId);
+            _logger.LogInformation("Successfully deleted chapter {ChapterId} from Tonie {TonieId}", chapterId, tonieId);
             
-            // Clear cache to force refresh on next load
-            ClearUserCache(userId);
+            // Refresh this specific Tonie from API
+            await RefreshTonieFromApiAsync(userId, householdId, tonieId, ct);
             
             return true;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error deleting chapter {ChapterId} from Tonie {TonieId}", 
-                chapterId, tonieId);
+            _logger.LogError(ex, "Error deleting chapter {ChapterId} from Tonie {TonieId}", chapterId, tonieId);
             throw;
         }
     }
 
     /// <summary>
-    /// Clear cached Tonie data for a user
+    /// Sync all Tonie data from API to database
     /// </summary>
-    public void ClearUserCache(string userId)
+    private async Task SyncTonieDataFromApiAsync(string userId, ApplicationDbContext dbContext, CancellationToken ct)
     {
-        var cacheKey = $"{CacheKeyPrefix}{userId}";
-        _cache.Remove(cacheKey);
-        _logger.LogDebug("Cleared Tonie cache for user {UserId}", userId);
+        var credentials = await GetUserCredentialsAsync(userId);
+
+        // Fetch households from API
+        var householdsDto = await _boxieCloudClient.GetHouseholdsAsync(
+            credentials.Username,
+            credentials.Password,
+            ct);
+
+        foreach (var householdDto in householdsDto)
+        {
+            // Find or create household
+            var household = await dbContext.Households
+                .Include(h => h.Characters)
+                .FirstOrDefaultAsync(h => h.ExternalId == householdDto.Id, ct);
+
+            if (household == null)
+            {
+                household = new Household
+                {
+                    Name = householdDto.Name,
+                    ExternalId = householdDto.Id,
+                    Created = DateTimeOffset.UtcNow
+                };
+                dbContext.Households.Add(household);
+            }
+            else
+            {
+                household.Name = householdDto.Name;
+            }
+
+            household.LastSyncedAt = DateTimeOffset.UtcNow;
+
+            // Fetch Creative Tonies for this household
+            var toniesDto = await _boxieCloudClient.GetCreativeToniesByHouseholdAsync(
+                credentials.Username,
+                credentials.Password,
+                householdDto.Id,
+                ct);
+
+            foreach (var tonieDto in toniesDto)
+            {
+                // Find or create character
+                var character = household.Characters
+                    .FirstOrDefault(c => c.ExternalCharacterId == tonieDto.Id);
+
+                if (character == null)
+                {
+                    character = new Character
+                    {
+                        Type = CharacterType.Creative,
+                        Name = tonieDto.Name,
+                        ExternalCharacterId = tonieDto.Id,
+                        HouseholdId = household.Id,
+                        Created = DateTimeOffset.UtcNow
+                    };
+                    household.Characters.Add(character);
+                }
+
+                UpdateCharacterFromDto(character, tonieDto);
+                character.LastSyncedAt = DateTimeOffset.UtcNow;
+            }
+        }
+
+        await dbContext.SaveChangesAsync(ct);
+        _logger.LogInformation("Synced {HouseholdCount} households for user {UserId}", householdsDto.Count, userId);
+    }
+
+    /// <summary>
+    /// Refresh a specific Tonie from API
+    /// </summary>
+    private async Task RefreshTonieFromApiAsync(
+        string userId, 
+        string householdId, 
+        string tonieId, 
+        CancellationToken ct)
+    {
+        await using var dbContext = await _dbContextFactory.CreateDbContextAsync(ct);
+        var credentials = await GetUserCredentialsAsync(userId);
+
+        var tonieDto = await _boxieCloudClient.GetCreativeTonieDetailsAsync(
+            credentials.Username,
+            credentials.Password,
+            householdId,
+            tonieId,
+            ct);
+
+        var character = await dbContext.Characters
+            .FirstOrDefaultAsync(c => c.ExternalCharacterId == tonieId, ct);
+
+        if (character != null)
+        {
+            UpdateCharacterFromDto(character, tonieDto);
+            character.LastSyncedAt = DateTimeOffset.UtcNow;
+            await dbContext.SaveChangesAsync(ct);
+        }
+    }
+
+    /// <summary>
+    /// Update Character entity from CreativeTonieDto
+    /// </summary>
+    private void UpdateCharacterFromDto(Character character, CreativeTonieDto dto)
+    {
+        character.Name = dto.Name;
+        character.ImageUrl = dto.ImageUrl;
+        character.SecondsPresent = dto.SecondsPresent;
+        character.SecondsRemaining = dto.SecondsRemaining;
+        character.ChaptersPresent = dto.ChaptersPresent;
+        character.ChaptersRemaining = dto.ChaptersRemaining;
+        character.Transcoding = dto.Transcoding;
+        character.Live = dto.Live;
+        character.Private = dto.Private;
+        character.ChaptersJson = dto.Chapters != null 
+            ? JsonSerializer.Serialize(dto.Chapters) 
+            : null;
+    }
+
+    /// <summary>
+    /// Convert Character entity to CreativeTonieDto
+    /// </summary>
+    private CreativeTonieDto CharacterToDto(Character character)
+    {
+        var dto = new CreativeTonieDto
+        {
+            Id = character.ExternalCharacterId ?? string.Empty,
+            HouseholdId = character.Household?.ExternalId ?? string.Empty,
+            Name = character.Name,
+            ImageUrl = character.ImageUrl ?? string.Empty,
+            SecondsPresent = character.SecondsPresent ?? 0,
+            SecondsRemaining = character.SecondsRemaining ?? 0,
+            ChaptersPresent = character.ChaptersPresent ?? 0,
+            ChaptersRemaining = character.ChaptersRemaining ?? 0,
+            Transcoding = character.Transcoding ?? false,
+            Live = character.Live ?? false,
+            Private = character.Private ?? false
+        };
+
+        // Deserialize chapters if available
+        if (!string.IsNullOrEmpty(character.ChaptersJson))
+        {
+            try
+            {
+                dto.Chapters = JsonSerializer.Deserialize<List<ChapterDto>>(character.ChaptersJson);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to deserialize chapters for Character {CharacterId}", character.Id);
+                dto.Chapters = new List<ChapterDto>();
+            }
+        }
+
+        return dto;
     }
 
     /// <summary>
@@ -390,13 +440,10 @@ public class TonieService : ITonieService
                 "No default Tonie Cloud account found. Please add a Tonie account first.");
         }
 
-        // Update last authenticated timestamp
         credential.LastAuthenticated = DateTimeOffset.UtcNow;
         await dbContext.SaveChangesAsync();
 
-        // Decrypt password
         var password = _encryption.Unprotect(credential.EncryptedPassword);
-
         return (credential.TonieUsername, password);
     }
 }

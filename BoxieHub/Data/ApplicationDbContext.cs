@@ -20,18 +20,38 @@ namespace BoxieHub.Data
         {
             base.OnModelCreating(builder);
             
-            // Index for efficient lookup of user's default credential
+            // TonieCredential indexes
             builder.Entity<TonieCredential>()
                 .HasIndex(t => new { t.UserId, t.IsDefault })
                 .HasDatabaseName("IX_TonieCredentials_UserId_IsDefault");
             
-            // Ensure only one default credential per user via unique filtered index
-            // PostgreSQL syntax for filtered index
             builder.Entity<TonieCredential>()
                 .HasIndex(t => t.UserId)
                 .HasFilter("\"IsDefault\" = true")
                 .IsUnique()
                 .HasDatabaseName("IX_TonieCredentials_UserId_UniqueDefault");
+            
+            // Household indexes for sync tracking
+            builder.Entity<Household>()
+                .HasIndex(h => h.ExternalId)
+                .HasDatabaseName("IX_Households_ExternalId");
+            
+            builder.Entity<Household>()
+                .HasIndex(h => h.LastSyncedAt)
+                .HasDatabaseName("IX_Households_LastSyncedAt");
+            
+            // Character indexes for Tonie lookup
+            builder.Entity<Character>()
+                .HasIndex(c => c.ExternalCharacterId)
+                .HasDatabaseName("IX_Characters_ExternalCharacterId");
+            
+            builder.Entity<Character>()
+                .HasIndex(c => new { c.HouseholdId, c.Type })
+                .HasDatabaseName("IX_Characters_HouseholdId_Type");
+            
+            builder.Entity<Character>()
+                .HasIndex(c => c.LastSyncedAt)
+                .HasDatabaseName("IX_Characters_LastSyncedAt");
         }
     }
 }
