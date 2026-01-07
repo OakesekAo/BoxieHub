@@ -195,15 +195,22 @@
 </div>
 
 <!-- Upload Modal -->
-@if (showUploadModal && tonie != null)
-{
-    <UploadAudioModal HouseholdId="@HouseholdId"
-                      TonieId="@TonieId"
-                      TonieName="@tonie.Name"
-                      AvailableSeconds="@tonie.SecondsRemaining"
-                      OnUploadComplete="HandleUploadComplete"
-                      OnCancel="() => showUploadModal = false" />
-}
+<div class="modal fade @(showUploadModal ? "show d-block" : "")" tabindex="-1" style="@(showUploadModal ? "background-color: rgba(0,0,0,0.5);" : "display: none;")">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content">
+            @if (tonie != null)
+            {
+                <UploadAudioModal HouseholdId="@HouseholdId"
+                                  TonieId="@TonieId"
+                                  TonieName="@tonie.Name"
+                                  AvailableSeconds="@tonie.SecondsRemaining"
+                                  IsVisible="@showUploadModal"
+                                  OnUploadComplete="HandleUploadComplete"
+                                  OnCancel="() => showUploadModal = false" />
+            }
+        </div>
+    </div>
+</div>
 
 <!-- Delete Confirmation Modal -->
 @if (showDeleteModal && chapterToDelete != null)
