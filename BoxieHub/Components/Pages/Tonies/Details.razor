@@ -240,15 +240,15 @@
 <!-- Success/Error Toast -->
 @if (!string.IsNullOrEmpty(statusMessage))
 {
-    <div class="position-fixed bottom-0 end-0 p-3" style="z-index: 11">
-        <div class="toast show" role="alert">
-            <div class="toast-header @(isError ? "bg-danger text-white" : "bg-success text-white")">
-                <i class="bi @(isError ? "bi-x-circle" : "bi-check-circle") me-2"></i>
-                <strong class="me-auto">@(isError ? "Error" : "Success")</strong>
+    <div class="position-fixed bottom-0 end-0 p-3" style="z-index: 1050">
+        <div class="toast show border-0 @(isError ? "bg-danger" : "bg-success") text-white" role="alert">
+            <div class="toast-body d-flex align-items-center">
+                <i class="bi @(isError ? "bi-exclamation-circle-fill" : "bi-check-circle-fill") me-2" style="font-size: 1.5rem;"></i>
+                <div class="flex-grow-1">
+                    <strong>@(isError ? "Error" : "Success")</strong>
+                    <div class="small">@statusMessage</div>
+                </div>
                 <button type="button" class="btn-close btn-close-white" @onclick="() => statusMessage = null"></button>
-            </div>
-            <div class="toast-body">
-                @statusMessage
             </div>
         </div>
     </div>
@@ -397,10 +397,14 @@
         isError = false;
         StateHasChanged();
 
-        Task.Delay(3000).ContinueWith(_ =>
+        // Auto-hide success messages after 4 seconds
+        Task.Delay(4000).ContinueWith(_ =>
         {
-            statusMessage = null;
-            InvokeAsync(StateHasChanged);
+            if (!isError && statusMessage == message)
+            {
+                statusMessage = null;
+                InvokeAsync(StateHasChanged);
+            }
         });
     }
 
@@ -410,10 +414,14 @@
         isError = true;
         StateHasChanged();
 
-        Task.Delay(5000).ContinueWith(_ =>
+        // Auto-hide error messages after 8 seconds (longer for errors)
+        Task.Delay(8000).ContinueWith(_ =>
         {
-            statusMessage = null;
-            InvokeAsync(StateHasChanged);
+            if (isError && statusMessage == message)
+            {
+                statusMessage = null;
+                InvokeAsync(StateHasChanged);
+            }
         });
     }
 

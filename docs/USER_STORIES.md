@@ -78,7 +78,7 @@ CREATE TABLE TonieCredentials (
 
 ## Epic 2: Creative Tonie Management
 
-### ?? User Story 2: List Creative Tonies
+### ? User Story 2: List Creative Tonies (COMPLETE)
 **As a** BoxieHub user  
 **I want to** see all my Creative Tonies in a list  
 **So that** I can quickly find and access them
@@ -112,7 +112,7 @@ CREATE TABLE TonieCredentials (
 
 ---
 
-### ?? User Story 3: View Tonie Details & Tracks
+### ? User Story 3: View Tonie Details & Tracks (COMPLETE)
 **As a** BoxieHub user  
 **I want to** view details of a specific Creative Tonie  
 **So that** I can see all tracks and manage them
@@ -175,7 +175,7 @@ CREATE TABLE TonieCredentials (
 
 ---
 
-### ?? User Story 5: Upload Tracks (Stub Implementation)
+### ? User Story 5: Upload Tracks (COMPLETE)
 **As a** BoxieHub user  
 **I want to** upload audio files to my Creative Tonie  
 **So that** I can add new content
