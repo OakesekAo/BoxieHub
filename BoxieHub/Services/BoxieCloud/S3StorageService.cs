@@ -51,9 +51,17 @@ public class S3StorageService : IS3StorageService
             }
             
             // Add file content last
-            var streamContent = new StreamContent(fileStream);
+            // Need to read stream into memory to get accurate length
+            using var memoryStream = new MemoryStream();
+            await fileStream.CopyToAsync(memoryStream, ct);
+            memoryStream.Position = 0;
+            
+            var streamContent = new StreamContent(memoryStream);
             streamContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/octet-stream");
+            streamContent.Headers.ContentLength = memoryStream.Length;
             content.Add(streamContent, "file", fileId);
+            
+            _logger.LogDebug("Added file content: {FileName} ({Length} bytes)", fileId, memoryStream.Length);
             
             // Upload to S3-compatible endpoint
             var response = await _httpClient.PostAsync(uploadUrl, content, ct);

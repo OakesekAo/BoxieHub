@@ -2,19 +2,56 @@
 
 namespace BoxieHub.Models
 {
-    public class ImageUpload
+    /// <summary>
+    /// Represents a file upload (image, audio, etc.) stored in the database
+    /// Can be extended to support external storage (S3, MinIO, etc.)
+    /// </summary>
+    public class FileUpload
     {
         public Guid Id { get; set; }
+        
         [Required]
         public byte[]? Data { get; set; }
+        
         [Required]
-        public string? Type { get; set; }
+        [MaxLength(100)]
+        public string? ContentType { get; set; }
+        
+        /// <summary>
+        /// Original filename
+        /// </summary>
+        [MaxLength(256)]
+        public string? FileName { get; set; }
+        
+        /// <summary>
+        /// File category (Image, Audio, Document, etc.)
+        /// </summary>
+        [MaxLength(50)]
+        public string FileCategory { get; set; } = "Unknown";
+        
+        /// <summary>
+        /// File size in bytes
+        /// </summary>
+        public long FileSizeBytes { get; set; }
+        
+        public DateTimeOffset Created { get; set; } = DateTimeOffset.UtcNow;
+        
         public string Url => $"/uploads/{Id}";
 
-        // For MVP: store path/key to file (local disk, S3, MinIO, etc.)
-        //[Required]
-        //TODO: Implement external storage support in the future
-        //public string StoragePath { get; set; } = default!;
-        // TODO: sha256, provider, etc. if needed later
+        // For future: external storage support
+        // [MaxLength(512)]
+        // public string? StoragePath { get; set; }
+        // public string? StorageProvider { get; set; } // "Local", "S3", "MinIO"
+    }
+    
+    /// <summary>
+    /// Legacy alias for backward compatibility
+    /// </summary>
+    public class ImageUpload : FileUpload
+    {
+        public ImageUpload()
+        {
+            FileCategory = "Image";
+        }
     }
 }

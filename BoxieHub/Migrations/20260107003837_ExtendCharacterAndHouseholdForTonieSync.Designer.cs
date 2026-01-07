@@ -3,6 +3,7 @@ using System;
 using BoxieHub.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace BoxieHub.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260107003837_ExtendCharacterAndHouseholdForTonieSync")]
+    partial class ExtendCharacterAndHouseholdForTonieSync
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -88,80 +91,6 @@ namespace BoxieHub.Migrations
                         .HasDatabaseName("UserNameIndex");
 
                     b.ToTable("AspNetUsers", (string)null);
-                });
-
-            modelBuilder.Entity("BoxieHub.Models.AudioUploadHistory", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<string>("ChapterId")
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
-
-                    b.Property<string>("ChapterTitle")
-                        .IsRequired()
-                        .HasMaxLength(256)
-                        .HasColumnType("character varying(256)");
-
-                    b.Property<DateTimeOffset?>("CompletedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTimeOffset>("Created")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("ErrorMessage")
-                        .HasColumnType("text");
-
-                    b.Property<Guid>("FileUploadId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("HouseholdId")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
-
-                    b.Property<DateTimeOffset?>("LastAttemptedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<int>("RetryCount")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)");
-
-                    b.Property<string>("TonieId")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
-
-                    b.Property<string>("UserId")
-                        .IsRequired()
-                        .HasMaxLength(450)
-                        .HasColumnType("character varying(450)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("Created")
-                        .HasDatabaseName("IX_AudioUploadHistories_Created");
-
-                    b.HasIndex("FileUploadId");
-
-                    b.HasIndex("Status")
-                        .HasDatabaseName("IX_AudioUploadHistories_Status");
-
-                    b.HasIndex("UserId")
-                        .HasDatabaseName("IX_AudioUploadHistories_UserId");
-
-                    b.HasIndex("TonieId", "HouseholdId")
-                        .HasDatabaseName("IX_AudioUploadHistories_TonieId_HouseholdId");
-
-                    b.ToTable("AudioUploadHistories");
                 });
 
             modelBuilder.Entity("BoxieHub.Models.Character", b =>
@@ -348,56 +277,6 @@ namespace BoxieHub.Migrations
                     b.ToTable("Devices");
                 });
 
-            modelBuilder.Entity("BoxieHub.Models.FileUpload", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("ContentType")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
-
-                    b.Property<DateTimeOffset>("Created")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<byte[]>("Data")
-                        .IsRequired()
-                        .HasColumnType("bytea");
-
-                    b.Property<string>("Discriminator")
-                        .IsRequired()
-                        .HasMaxLength(13)
-                        .HasColumnType("character varying(13)");
-
-                    b.Property<string>("FileCategory")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)");
-
-                    b.Property<string>("FileName")
-                        .HasMaxLength(256)
-                        .HasColumnType("character varying(256)");
-
-                    b.Property<long>("FileSizeBytes")
-                        .HasColumnType("bigint");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("Created")
-                        .HasDatabaseName("IX_FileUploads_Created");
-
-                    b.HasIndex("FileCategory")
-                        .HasDatabaseName("IX_FileUploads_FileCategory");
-
-                    b.ToTable("FileUploads");
-
-                    b.HasDiscriminator().HasValue("FileUpload");
-
-                    b.UseTphMappingStrategy();
-                });
-
             modelBuilder.Entity("BoxieHub.Models.Household", b =>
                 {
                     b.Property<int>("Id")
@@ -462,6 +341,25 @@ namespace BoxieHub.Migrations
                     b.HasIndex("UserId");
 
                     b.ToTable("HouseholdMembers");
+                });
+
+            modelBuilder.Entity("BoxieHub.Models.ImageUpload", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<byte[]>("Data")
+                        .IsRequired()
+                        .HasColumnType("bytea");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("Images");
                 });
 
             modelBuilder.Entity("BoxieHub.Models.SyncJob", b =>
@@ -693,24 +591,6 @@ namespace BoxieHub.Migrations
                     b.ToTable("AspNetUserTokens", (string)null);
                 });
 
-            modelBuilder.Entity("BoxieHub.Models.ImageUpload", b =>
-                {
-                    b.HasBaseType("BoxieHub.Models.FileUpload");
-
-                    b.HasDiscriminator().HasValue("ImageUpload");
-                });
-
-            modelBuilder.Entity("BoxieHub.Models.AudioUploadHistory", b =>
-                {
-                    b.HasOne("BoxieHub.Models.FileUpload", "FileUpload")
-                        .WithMany()
-                        .HasForeignKey("FileUploadId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("FileUpload");
-                });
-
             modelBuilder.Entity("BoxieHub.Models.Character", b =>
                 {
                     b.HasOne("BoxieHub.Models.Household", "Household")
@@ -759,7 +639,7 @@ namespace BoxieHub.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("BoxieHub.Models.FileUpload", "Upload")
+                    b.HasOne("BoxieHub.Models.ImageUpload", "Upload")
                         .WithMany()
                         .HasForeignKey("UploadId")
                         .OnDelete(DeleteBehavior.Cascade)

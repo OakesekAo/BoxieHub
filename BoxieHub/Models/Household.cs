@@ -15,7 +15,13 @@ namespace BoxieHub.Models
         /// External household ID from Tonie Cloud API
         /// Used to sync with the Tonie Cloud service
         /// </summary>
+        [MaxLength(100)]
         public string? ExternalId { get; set; }
+        
+        /// <summary>
+        /// When this household data was last synced from Tonie Cloud API
+        /// </summary>
+        public DateTimeOffset? LastSyncedAt { get; set; }
 
         private DateTimeOffset _created;
         public DateTimeOffset Created
@@ -35,5 +41,22 @@ namespace BoxieHub.Models
 
         // Multi-household stub
         public ICollection<HouseholdMember> Members { get; set; } = [];
+        
+        // Helper properties
+        
+        /// <summary>
+        /// Check if household data is stale (older than 1 day)
+        /// </summary>
+        public bool IsStale => 
+            LastSyncedAt.HasValue && 
+            DateTimeOffset.UtcNow - LastSyncedAt.Value > TimeSpan.FromDays(1);
+        
+        /// <summary>
+        /// Get age of cached household data
+        /// </summary>
+        public TimeSpan? DataAge => 
+            LastSyncedAt.HasValue 
+                ? DateTimeOffset.UtcNow - LastSyncedAt.Value 
+                : null;
     }
 }

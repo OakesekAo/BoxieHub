@@ -93,7 +93,8 @@
         if (result.Succeeded)
         {
             Logger.LogInformation("User logged in.");
-            RedirectManager.RedirectTo(ReturnUrl);
+            // Redirect to /tonies if no ReturnUrl specified
+            RedirectManager.RedirectTo(string.IsNullOrEmpty(ReturnUrl) ? "/tonies" : ReturnUrl);
         }
         else if (result.RequiresTwoFactor)
         {

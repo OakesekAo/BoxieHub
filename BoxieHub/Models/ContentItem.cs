@@ -21,8 +21,7 @@ namespace BoxieHub.Models
         // File backing this content item
         [Required]
         public Guid UploadId { get; set; }
-        //TODO: Fix to generic file upload
-        public ImageUpload Upload { get; set; } = default!;
+        public FileUpload Upload { get; set; } = default!;
 
         private DateTimeOffset _created;
         public DateTimeOffset Created

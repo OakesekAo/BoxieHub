@@ -31,6 +31,116 @@
         window.setTheme = (theme) => {
             document.querySelector('[data-cf-theme]').setAttribute('data-cf-theme', theme);
         }
+
+        // Get audio file duration in seconds
+        window.getAudioDuration = function(fileBytes, contentType) {
+            return new Promise((resolve, reject) => {
+                try {
+                    // Convert byte array to Blob
+                    const blob = new Blob([new Uint8Array(fileBytes)], { type: contentType });
+                    const url = URL.createObjectURL(blob);
+                    const audio = document.createElement('audio');
+                    
+                    audio.addEventListener('loadedmetadata', function() {
+                        URL.revokeObjectURL(url);
+                        console.log('Audio duration:', audio.duration, 'seconds');
+                        resolve(audio.duration); // Duration in seconds
+                    });
+                    
+                    audio.addEventListener('error', function(e) {
+                        URL.revokeObjectURL(url);
+                        console.error('Audio loading error:', e);
+                        reject('Failed to load audio file: ' + (e.message || 'Unknown error'));
+                    });
+                    
+                    audio.src = url;
+                    audio.load(); // Force load metadata
+                } catch (e) {
+                    console.error('Exception in getAudioDuration:', e);
+                    reject('Exception: ' + e.message);
+                }
+            });
+        };
+
+        // Drag & Drop for chapter reordering
+        window.chapterDragDrop = {
+            draggedIndex: -1,
+            dotnetHelper: null,
+            
+            init: function(dotnetHelper) {
+                this.dotnetHelper = dotnetHelper;
+                this.attachEventListeners();
+                console.log('Drag & drop initialized');
+            },
+            
+            attachEventListeners: function() {
+                // Wait for DOM to be ready
+                setTimeout(() => {
+                    const rows = document.querySelectorAll('.chapter-row[draggable="true"]');
+                    console.log('Attaching drag listeners to', rows.length, 'rows');
+                    
+                    rows.forEach((row, idx) => {
+                        row.ondragstart = (e) => this.dragStart(e, idx);
+                        row.ondragover = (e) => this.dragOver(e);
+                        row.ondragenter = (e) => this.dragEnter(e);
+                        row.ondragleave = (e) => this.dragLeave(e);
+                        row.ondrop = (e) => this.drop(e, idx);
+                        row.ondragend = (e) => this.dragEnd(e);
+                    });
+                }, 100);
+            },
+            
+            dragStart: function(e, index) {
+                this.draggedIndex = index;
+                e.dataTransfer.effectAllowed = 'move';
+                e.dataTransfer.setData('text/html', e.target.innerHTML);
+                e.target.classList.add('dragging');
+                console.log('Drag started:', index);
+            },
+            
+            dragOver: function(e) {
+                if (e.preventDefault) e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
+                return false;
+            },
+            
+            dragEnter: function(e) {
+                const row = e.target.closest('tr');
+                if (row && row.classList.contains('chapter-row')) {
+                    row.classList.add('drag-over');
+                }
+            },
+            
+            dragLeave: function(e) {
+                const row = e.target.closest('tr');
+                if (row && row.classList.contains('chapter-row')) {
+                    row.classList.remove('drag-over');
+                }
+            },
+            
+            drop: function(e, dropIndex) {
+                if (e.stopPropagation) e.stopPropagation();
+                if (e.preventDefault) e.preventDefault();
+                
+                const row = e.target.closest('tr');
+                if (row) row.classList.remove('drag-over');
+                
+                console.log('Drop:', this.draggedIndex, '->', dropIndex);
+                
+                if (this.draggedIndex !== -1 && this.draggedIndex !== dropIndex && this.dotnetHelper) {
+                    this.dotnetHelper.invokeMethodAsync('OnChapterDropped', this.draggedIndex, dropIndex);
+                }
+                
+                return false;
+            },
+            
+            dragEnd: function(e) {
+                document.querySelectorAll('tr.dragging, tr.drag-over').forEach(tr => {
+                    tr.classList.remove('dragging', 'drag-over');
+                });
+                this.draggedIndex = -1;
+            }
+        };
     </script>
     <script src="_framework/blazor.web.js"></script>
 </body>

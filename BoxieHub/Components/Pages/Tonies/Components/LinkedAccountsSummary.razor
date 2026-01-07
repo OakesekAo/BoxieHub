@@ -2,7 +2,7 @@
 @using BoxieHub.Models
 @using Microsoft.EntityFrameworkCore
 @using System.Security.Claims
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbContextFactory
 @inject AuthenticationStateProvider AuthStateProvider
 @inject NavigationManager Navigation
 
@@ -93,7 +93,10 @@
 
             if (!string.IsNullOrEmpty(userId))
             {
-                credentials = await DbContext.TonieCredentials
+                // Create a new DbContext instance for this operation
+                await using var dbContext = await DbContextFactory.CreateDbContextAsync();
+                
+                credentials = await dbContext.TonieCredentials
                     .Where(c => c.UserId == userId)
                     .OrderByDescending(c => c.IsDefault)
                     .ThenByDescending(c => c.LastAuthenticated)
