@@ -166,18 +166,33 @@
     }
     else if (!isLoading)
     {
-        <div class="alert alert-info">
-            <h5><i class="bi bi-info-circle"></i> No Tonies Found</h5>
-            <p>
-                It looks like you don't have any Creative Tonies yet, or they couldn't be loaded.
-            </p>
-            @if (string.IsNullOrEmpty(errorMessage))
-            {
-                <button class="btn btn-primary" @onclick="RefreshData">
-                    <i class="bi bi-arrow-clockwise"></i> Try Again
-                </button>
-            }
-        </div>
+        @if (!hasLinkedAccounts)
+        {
+            <div class="alert alert-info">
+                <h5><i class="bi bi-info-circle"></i> No Tonie Accounts Linked</h5>
+                <p>
+                    To get started, you'll need to link your Tonie Cloud account.
+                </p>
+                <a href="/tonies/add-account" class="btn btn-primary">
+                    <i class="bi bi-link-45deg"></i> Link Your Tonie Account
+                </a>
+            </div>
+        }
+        else
+        {
+            <div class="alert alert-info">
+                <h5><i class="bi bi-info-circle"></i> No Tonies Found</h5>
+                <p>
+                    It looks like you don't have any Creative Tonies yet, or they couldn't be loaded.
+                </p>
+                @if (!string.IsNullOrEmpty(errorMessage))
+                {
+                    <button class="btn btn-primary" @onclick="RefreshData">
+                        <i class="bi bi-arrow-clockwise"></i> Try Again
+                    </button>
+                }
+            </div>
+        }
     }
 </div>
 
