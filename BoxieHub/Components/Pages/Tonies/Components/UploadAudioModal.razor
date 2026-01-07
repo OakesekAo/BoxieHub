@@ -44,7 +44,11 @@
                                     <strong>Drag & drop your audio file here</strong><br />
                                     or
                                 </p>
-                                <InputFile OnChange="HandleFileSelected" class="d-none" id="fileInput" accept=".mp3,.m4a,.ogg,.wav" />
+                                <InputFile OnChange="HandleFileSelected" 
+                                          class="d-none" 
+                                          id="fileInput" 
+                                          accept=".mp3,.m4a,.ogg,.wav"
+                                          @key="fileInputKey" />
                                 <label for="fileInput" class="btn btn-primary">
                                     <i class="bi bi-folder2-open"></i> Browse Files
                                 </label>
@@ -59,9 +63,9 @@
                                     <div class="d-flex align-items-center justify-content-between">
                                         <div>
                                             <i class="bi bi-file-earmark-music"></i>
-                                            <strong>@selectedFile.Name</strong>
+                                            <strong>@selectedFileName</strong>
                                             <br />
-                                            <small class="text-muted">@FormatFileSize(selectedFile.Size)</small>
+                                            <small class="text-muted">@FormatFileSize(selectedFileSize)</small>
                                         </div>
                                         <button type="button" class="btn btn-sm btn-outline-danger" @onclick="ClearFile">
                                             <i class="bi bi-x-lg"></i>
@@ -186,10 +190,13 @@
 
     private string chapterTitle = string.Empty;
     private IBrowserFile? selectedFile;
+    private string selectedFileName = string.Empty;
+    private long selectedFileSize = 0;
     private bool isUploading = false;
     private bool isDragOver = false;
     private string? validationError;
     private Models.BoxieCloud.SyncResultDto? uploadResult;
+    private Guid fileInputKey = Guid.NewGuid();
 
     private bool CanUpload => 
         !string.IsNullOrWhiteSpace(chapterTitle) && 
@@ -209,7 +216,6 @@
     private async Task HandleDrop(DragEventArgs e)
     {
         isDragOver = false;
-        // Note: Browser file drag & drop is handled by InputFile component
     }
 
     private async Task HandleFileSelected(InputFileChangeEventArgs e)
@@ -220,6 +226,10 @@
         // Validate file
         if (selectedFile != null)
         {
+            // Store file info immediately to avoid reference issues
+            selectedFileName = selectedFile.Name;
+            selectedFileSize = selectedFile.Size;
+
             // Check file extension
             var extension = Path.GetExtension(selectedFile.Name).ToLowerInvariant();
             var allowedExtensions = new[] { ".mp3", ".m4a", ".ogg", ".wav" };
@@ -228,6 +238,8 @@
             {
                 validationError = $"Invalid file format. Please upload MP3, M4A, OGG, or WAV files.";
                 selectedFile = null;
+                selectedFileName = string.Empty;
+                selectedFileSize = 0;
                 return;
             }
 
@@ -237,6 +249,8 @@
             {
                 validationError = $"File too large. Maximum size is {FormatFileSize(maxSizeBytes)}.";
                 selectedFile = null;
+                selectedFileName = string.Empty;
+                selectedFileSize = 0;
                 return;
             }
 
@@ -251,7 +265,11 @@
     private void ClearFile()
     {
         selectedFile = null;
+        selectedFileName = string.Empty;
+        selectedFileSize = 0;
         validationError = null;
+        // Reset the InputFile component by changing its key
+        fileInputKey = Guid.NewGuid();
     }
 
     private async Task StartUpload()
@@ -269,30 +287,35 @@
             if (string.IsNullOrEmpty(userId))
             {
                 validationError = "User not authenticated";
+                isUploading = false;
                 return;
             }
 
-            // Open file stream
-            using var stream = selectedFile.OpenReadStream(maxAllowedSize: 200 * 1024 * 1024); // 200MB
-
-            // Upload to Tonie Cloud
-            uploadResult = await TonieService.UploadAudioToTonieAsync(
-                userId,
-                HouseholdId,
-                TonieId,
-                stream,
-                chapterTitle);
-
-            if (uploadResult.Success)
+            // Read the file stream immediately before any state changes
+            var fileStream = selectedFile.OpenReadStream(maxAllowedSize: 200 * 1024 * 1024);
+            
+            try
             {
-                Logger.LogInformation("Successfully uploaded '{Title}' to Tonie {TonieId}", chapterTitle, TonieId);
+                // Upload to Tonie Cloud
+                uploadResult = await TonieService.UploadAudioToTonieAsync(
+                    userId,
+                    HouseholdId,
+                    TonieId,
+                    fileStream,
+                    chapterTitle);
 
-                // Notify parent component
-                await OnUploadComplete.InvokeAsync();
+                if (uploadResult.Success)
+                {
+                    Logger.LogInformation("Successfully uploaded '{Title}' to Tonie {TonieId}", chapterTitle, TonieId);
+                }
+                else
+                {
+                    Logger.LogWarning("Upload failed for '{Title}': {Error}", chapterTitle, uploadResult.ErrorDetails);
+                }
             }
-            else
+            finally
             {
-                Logger.LogWarning("Upload failed for '{Title}': {Error}", chapterTitle, uploadResult.ErrorDetails);
+                await fileStream.DisposeAsync();
             }
         }
         catch (Exception ex)
@@ -308,6 +331,7 @@
         finally
         {
             isUploading = false;
+            selectedFile = null; // Clear file reference after upload
         }
     }
 
@@ -344,3 +368,4 @@
         return $"{timeSpan.Minutes}m";
     }
 }
+
