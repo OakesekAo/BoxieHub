@@ -17,27 +17,29 @@ public class TonieServiceTests : IDisposable
     private readonly Mock<ICredentialEncryptionService> _mockEncryption;
     private readonly Mock<IDbContextFactory<ApplicationDbContext>> _mockDbContextFactory;
     private readonly ApplicationDbContext _dbContext;
+    private readonly DbContextOptions<ApplicationDbContext> _dbOptions;
     private readonly Mock<ILogger<TonieService>> _mockLogger;
     private readonly TonieService _service;
     private readonly string _testUserId = "test-user-123";
 
     public TonieServiceTests()
     {
-        // Setup in-memory database
-        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+        // Setup in-memory database OPTIONS (shared across contexts)
+        _dbOptions = new DbContextOptionsBuilder<ApplicationDbContext>()
             .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
             .Options;
-        _dbContext = new ApplicationDbContext(options);
+        
+        _dbContext = new ApplicationDbContext(_dbOptions);
 
         // Setup mocks
         _mockBoxieClient = new Mock<IBoxieCloudClient>();
         _mockEncryption = new Mock<ICredentialEncryptionService>();
         _mockLogger = new Mock<ILogger<TonieService>>();
         
-        // Mock IDbContextFactory to return the same in-memory DbContext
+        // Mock IDbContextFactory to create NEW contexts each time (to avoid disposal issues)
         _mockDbContextFactory = new Mock<IDbContextFactory<ApplicationDbContext>>();
         _mockDbContextFactory.Setup(x => x.CreateDbContextAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(_dbContext);
+            .ReturnsAsync(() => new ApplicationDbContext(_dbOptions)); // Create new instance
 
         // Create service (no IMemoryCache needed)
         _service = new TonieService(
