@@ -1,0 +1,471 @@
+@rendermode InteractiveServer
+@page "/tonies/{householdId}/{tonieId}"
+@using BoxieHub.Models.BoxieCloud
+@using BoxieHub.Services
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Authorization
+@inject ITonieService TonieService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Navigation
+@inject ILogger<Details> Logger
+@attribute [Authorize]
+
+<PageTitle>@(tonie?.Name ?? "Tonie Details") - BoxieHub</PageTitle>
+
+<div class="container mt-4">
+    @if (isLoading)
+    {
+        <div class="text-center py-5">
+            <div class="spinner-border spinner-border-lg text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <p class="mt-3 text-muted">Loading Tonie details...</p>
+        </div>
+    }
+    else if (!string.IsNullOrEmpty(errorMessage))
+    {
+        <div class="alert alert-danger">
+            <h5><i class="bi bi-exclamation-triangle-fill"></i> Error Loading Tonie</h5>
+            <p>@errorMessage</p>
+            <a href="/tonies" class="btn btn-secondary">
+                <i class="bi bi-arrow-left"></i> Back to Tonies
+            </a>
+        </div>
+    }
+    else if (tonie != null)
+    {
+        <!-- Breadcrumb -->
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="/tonies">My Tonies</a></li>
+                <li class="breadcrumb-item active">@tonie.Name</li>
+            </ol>
+        </nav>
+
+        <!-- Tonie Header -->
+        <div class="card shadow mb-4">
+            <div class="card-body">
+                <div class="row align-items-center">
+                    <div class="col-md-2 text-center">
+                        <img src="@tonie.ImageUrl" alt="@tonie.Name" class="img-fluid rounded" style="max-height: 150px;" />
+                    </div>
+                    <div class="col-md-7">
+                        <h2 class="mb-2">@tonie.Name</h2>
+                        <div class="mb-2">
+                            <span class="badge bg-primary me-2">
+                                <i class="bi bi-music-note"></i> @tonie.ChaptersPresent chapters
+                            </span>
+                            <span class="badge bg-info me-2">
+                                <i class="bi bi-clock"></i> @FormatDuration(tonie.SecondsPresent)
+                            </span>
+                            @if (tonie.Transcoding)
+                            {
+                                <span class="badge bg-warning">
+                                    <span class="spinner-border spinner-border-sm me-1"></span> Processing...
+                                </span>
+                            }
+                            else if (tonie.Live)
+                            {
+                                <span class="badge bg-success">
+                                    <i class="bi bi-check-circle-fill"></i> Live
+                                </span>
+                            }
+                        </div>
+                        
+                        <!-- Storage Progress Bar -->
+                        <div class="mt-3">
+                            <div class="d-flex justify-content-between mb-1">
+                                <small class="text-muted">Storage Used</small>
+                                <small class="text-muted">@GetStoragePercentage(tonie)% (@FormatDuration(tonie.SecondsPresent) / @FormatDuration(tonie.SecondsPresent + tonie.SecondsRemaining))</small>
+                            </div>
+                            <div class="progress" style="height: 20px;">
+                                <div class="progress-bar @GetStorageColorClass(tonie)" 
+                                     role="progressbar" 
+                                     style="width: @GetStoragePercentage(tonie)%" 
+                                     aria-valuenow="@GetStoragePercentage(tonie)" 
+                                     aria-valuemin="0" 
+                                     aria-valuemax="100">
+                                    @GetStoragePercentage(tonie)%
+                                </div>
+                            </div>
+                            <small class="text-muted">
+                                <i class="bi bi-info-circle"></i> @FormatDuration(tonie.SecondsRemaining) available
+                            </small>
+                        </div>
+                    </div>
+                    <div class="col-md-3 text-end">
+                        <button class="btn btn-outline-secondary mb-2 w-100" @onclick="RefreshTonie" disabled="@isRefreshing">
+                            @if (isRefreshing)
+                            {
+                                <span class="spinner-border spinner-border-sm me-2"></span>
+                                <span>Refreshing...</span>
+                            }
+                            else
+                            {
+                                <i class="bi bi-arrow-clockwise"></i>
+                                <span>Refresh</span>
+                            }
+                        </button>
+                        <button class="btn btn-primary w-100" @onclick="ShowUploadModal">
+                            <i class="bi bi-upload"></i> Upload Audio
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Chapters Section -->
+        <div class="card shadow">
+            <div class="card-header bg-light">
+                <h4 class="mb-0">
+                    <i class="bi bi-list-ol"></i> Chapters (@(tonie.Chapters?.Count ?? 0))
+                </h4>
+            </div>
+            <div class="card-body p-0">
+                @if (tonie.Chapters == null || !tonie.Chapters.Any())
+                {
+                    <div class="text-center py-5 text-muted">
+                        <i class="bi bi-music-note-list" style="font-size: 3rem;"></i>
+                        <p class="mt-3">No chapters yet. Upload your first audio file!</p>
+                        <button class="btn btn-primary" @onclick="ShowUploadModal">
+                            <i class="bi bi-upload"></i> Upload Audio
+                        </button>
+                    </div>
+                }
+                else
+                {
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th style="width: 50px;">#</th>
+                                    <th>Title</th>
+                                    <th style="width: 100px;">Duration</th>
+                                    <th style="width: 120px;">Status</th>
+                                    <th style="width: 100px;" class="text-end">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @for (int i = 0; i < tonie.Chapters.Count; i++)
+                                {
+                                    var chapter = tonie.Chapters[i];
+                                    var index = i + 1;
+                                    <tr>
+                                        <td class="align-middle text-muted">@index</td>
+                                        <td class="align-middle">
+                                            <strong>@chapter.Title</strong>
+                                        </td>
+                                        <td class="align-middle">
+                                            <small class="text-muted">
+                                                <i class="bi bi-clock"></i> @FormatDuration(chapter.Seconds)
+                                            </small>
+                                        </td>
+                                        <td class="align-middle">
+                                            @if (chapter.Transcoding)
+                                            {
+                                                <span class="badge bg-warning">
+                                                    <span class="spinner-border spinner-border-sm me-1"></span> Processing
+                                                </span>
+                                            }
+                                            else
+                                            {
+                                                <span class="badge bg-success">
+                                                    <i class="bi bi-check-circle"></i> Ready
+                                                </span>
+                                            }
+                                        </td>
+                                        <td class="align-middle text-end">
+                                            <button class="btn btn-sm btn-outline-danger" 
+                                                    @onclick="() => ShowDeleteConfirmation(chapter)"
+                                                    disabled="@isDeleting"
+                                                    title="Delete chapter">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+</div>
+
+<!-- Upload Modal (placeholder for now) -->
+@if (showUploadModal)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Upload Audio</h5>
+                    <button type="button" class="btn-close" @onclick="() => showUploadModal = false"></button>
+                </div>
+                <div class="modal-body">
+                    <p>Upload functionality coming in next step!</p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="() => showUploadModal = false">
+                        Close
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Delete Confirmation Modal -->
+@if (showDeleteModal && chapterToDelete != null)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header bg-danger text-white">
+                    <h5 class="modal-title">
+                        <i class="bi bi-exclamation-triangle"></i> Confirm Deletion
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" @onclick="CancelDelete" disabled="@isDeleting"></button>
+                </div>
+                <div class="modal-body">
+                    <p><strong>Are you sure you want to delete this chapter?</strong></p>
+                    <div class="alert alert-warning">
+                        <div><strong>Chapter:</strong> @chapterToDelete.Title</div>
+                        <div><strong>Duration:</strong> @FormatDuration(chapterToDelete.Seconds)</div>
+                    </div>
+                    <p class="text-danger mb-0">
+                        <i class="bi bi-exclamation-circle"></i> This action cannot be undone.
+                    </p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="CancelDelete" disabled="@isDeleting">
+                        Cancel
+                    </button>
+                    <button type="button" class="btn btn-danger" @onclick="ConfirmDelete" disabled="@isDeleting">
+                        @if (isDeleting)
+                        {
+                            <span class="spinner-border spinner-border-sm me-2"></span>
+                            <span>Deleting...</span>
+                        }
+                        else
+                        {
+                            <i class="bi bi-trash me-2"></i>
+                            <span>Delete Chapter</span>
+                        }
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Success/Error Toast -->
+@if (!string.IsNullOrEmpty(statusMessage))
+{
+    <div class="position-fixed bottom-0 end-0 p-3" style="z-index: 11">
+        <div class="toast show" role="alert">
+            <div class="toast-header @(isError ? "bg-danger text-white" : "bg-success text-white")">
+                <i class="bi @(isError ? "bi-x-circle" : "bi-check-circle") me-2"></i>
+                <strong class="me-auto">@(isError ? "Error" : "Success")</strong>
+                <button type="button" class="btn-close btn-close-white" @onclick="() => statusMessage = null"></button>
+            </div>
+            <div class="toast-body">
+                @statusMessage
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter]
+    public string HouseholdId { get; set; } = string.Empty;
+
+    [Parameter]
+    public string TonieId { get; set; } = string.Empty;
+
+    private CreativeTonieDto? tonie;
+    private bool isLoading = true;
+    private bool isRefreshing = false;
+    private bool isDeleting = false;
+    private string? errorMessage;
+    private string? statusMessage;
+    private bool isError = false;
+
+    private bool showUploadModal = false;
+    private bool showDeleteModal = false;
+    private ChapterDto? chapterToDelete;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadTonieDetails();
+    }
+
+    private async Task LoadTonieDetails()
+    {
+        isLoading = true;
+        errorMessage = null;
+
+        try
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var userId = authState.User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+            if (string.IsNullOrEmpty(userId))
+            {
+                errorMessage = "User not authenticated";
+                return;
+            }
+
+            tonie = await TonieService.GetCreativeTonieDetailsAsync(userId, HouseholdId, TonieId);
+            Logger.LogInformation("Loaded Tonie details for {TonieId}: {Name} with {ChapterCount} chapters",
+                TonieId, tonie.Name, tonie.Chapters?.Count ?? 0);
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Failed to load Tonie details: {ex.Message}";
+            Logger.LogError(ex, "Error loading Tonie details for {TonieId}", TonieId);
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task RefreshTonie()
+    {
+        isRefreshing = true;
+        try
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var userId = authState.User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+            if (!string.IsNullOrEmpty(userId))
+            {
+                // Force refresh from API
+                tonie = await TonieService.GetCreativeTonieDetailsAsync(userId, HouseholdId, TonieId);
+                ShowSuccess("Tonie refreshed successfully");
+            }
+        }
+        catch (Exception ex)
+        {
+            ShowError($"Failed to refresh Tonie: {ex.Message}");
+            Logger.LogError(ex, "Error refreshing Tonie {TonieId}", TonieId);
+        }
+        finally
+        {
+            isRefreshing = false;
+        }
+    }
+
+    private void ShowUploadModal()
+    {
+        showUploadModal = true;
+    }
+
+    private void ShowDeleteConfirmation(ChapterDto chapter)
+    {
+        chapterToDelete = chapter;
+        showDeleteModal = true;
+    }
+
+    private void CancelDelete()
+    {
+        showDeleteModal = false;
+        chapterToDelete = null;
+    }
+
+    private async Task ConfirmDelete()
+    {
+        if (chapterToDelete == null || tonie == null) return;
+
+        isDeleting = true;
+        try
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var userId = authState.User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+            if (!string.IsNullOrEmpty(userId))
+            {
+                var success = await TonieService.DeleteChapterAsync(
+                    userId,
+                    HouseholdId,
+                    TonieId,
+                    chapterToDelete.Id);
+
+                if (success)
+                {
+                    ShowSuccess($"Chapter '{chapterToDelete.Title}' deleted successfully");
+
+                    // Reload Tonie details
+                    await LoadTonieDetails();
+                }
+                else
+                {
+                    ShowError("Failed to delete chapter");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            ShowError($"Error deleting chapter: {ex.Message}");
+            Logger.LogError(ex, "Error deleting chapter {ChapterId}", chapterToDelete.Id);
+        }
+        finally
+        {
+            isDeleting = false;
+            showDeleteModal = false;
+            chapterToDelete = null;
+        }
+    }
+
+    private void ShowSuccess(string message)
+    {
+        statusMessage = message;
+        isError = false;
+        StateHasChanged();
+
+        Task.Delay(3000).ContinueWith(_ =>
+        {
+            statusMessage = null;
+            InvokeAsync(StateHasChanged);
+        });
+    }
+
+    private void ShowError(string message)
+    {
+        statusMessage = message;
+        isError = true;
+        StateHasChanged();
+
+        Task.Delay(5000).ContinueWith(_ =>
+        {
+            statusMessage = null;
+            InvokeAsync(StateHasChanged);
+        });
+    }
+
+    private string FormatDuration(float seconds)
+    {
+        var timeSpan = TimeSpan.FromSeconds(seconds);
+        if (timeSpan.TotalHours >= 1)
+        {
+            return $"{(int)timeSpan.TotalHours}h {timeSpan.Minutes}m";
+        }
+        return $"{timeSpan.Minutes}m {timeSpan.Seconds}s";
+    }
+
+    private int GetStoragePercentage(CreativeTonieDto tonie)
+    {
+        var total = tonie.SecondsPresent + tonie.SecondsRemaining;
+        return total > 0 ? (int)((tonie.SecondsPresent / total) * 100) : 0;
+    }
+
+    private string GetStorageColorClass(CreativeTonieDto tonie)
+    {
+        var percentage = GetStoragePercentage(tonie);
+        if (percentage >= 90) return "bg-danger";
+        if (percentage >= 70) return "bg-warning";
+        return "bg-success";
+    }
+}
