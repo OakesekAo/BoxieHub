@@ -8,7 +8,9 @@
 @inject AuthenticationStateProvider AuthStateProvider
 @inject NavigationManager Navigation
 @inject ILogger<Details> Logger
+@inject IJSRuntime JS
 @attribute [Authorize]
+@implements IAsyncDisposable
 
 <PageTitle>@(tonie?.Name ?? "Tonie Details") - BoxieHub</PageTitle>
 
@@ -165,54 +167,55 @@
                                     <th style="width: 100px;" class="text-end">Actions</th>
                                 </tr>
                             </thead>
-                             <tbody>
-                                @for (int i = 0; i < tonie.Chapters.Count; i++)
+                            <tbody>
+                                @if (tonie.Chapters != null)
                                 {
-                                    var chapter = tonie.Chapters[i];
-                                    var index = i + 1;
-                                    var currentIndex = i;
-                                    <tr draggable="true"
-                                        @ondragstart="() => HandleDragStart(currentIndex)"
-                                        @ondrop="() => HandleDrop(currentIndex)"
-                                        @ondragover:preventDefault
-                                        @ondragenter="() => HandleDragEnter(currentIndex)"
-                                        @ondragleave="() => HandleDragLeave(currentIndex)"
-                                        class="@(dragOverIndex == currentIndex ? "drag-over" : "") @(draggedIndex == currentIndex ? "dragging" : "")">
-                                        <td class="align-middle text-muted">
-                                            <i class="bi bi-grip-vertical drag-handle me-1" style="cursor: grab;"></i>
-                                            @index
-                                        </td>
-                                        <td class="align-middle">
-                                            <strong>@chapter.Title</strong>
-                                        </td>
-                                        <td class="align-middle">
-                                            <small class="text-muted">
-                                                <i class="bi bi-clock"></i> @FormatDuration(chapter.Seconds)
-                                            </small>
-                                        </td>
-                                        <td class="align-middle">
-                                            @if (chapter.Transcoding)
-                                            {
-                                                <span class="badge bg-warning">
-                                                    <span class="spinner-border spinner-border-sm me-1"></span> Processing
-                                                </span>
-                                            }
-                                            else
-                                            {
-                                                <span class="badge bg-success">
-                                                    <i class="bi bi-check-circle"></i> Ready
-                                                </span>
-                                            }
-                                        </td>
-                                        <td class="align-middle text-end">
-                                            <button class="btn btn-sm btn-outline-danger" 
-                                                    @onclick="() => ShowDeleteConfirmation(chapter)"
-                                                    disabled="@(isDeleting || hasUnsavedChanges)"
-                                                    title="Delete chapter">
-                                                <i class="bi bi-trash"></i>
-                                            </button>
-                                        </td>
-                                    </tr>
+                                    @for (int i = 0; i < tonie.Chapters.Count; i++)
+                                    {
+                                        var chapter = tonie.Chapters[i];
+                                        var index = i + 1;
+                                        var currentIndex = i;
+                                        <tr draggable="true"
+                                            @key="chapter.Id"
+                                            data-chapter-index="@currentIndex"
+                                            class="chapter-row"
+                                            style="cursor: move;">
+                                            <td class="align-middle text-muted">
+                                                <i class="bi bi-grip-vertical me-2" style="opacity: 0.5;"></i>
+                                                @index
+                                            </td>
+                                            <td class="align-middle">
+                                                <strong>@chapter.Title</strong>
+                                            </td>
+                                            <td class="align-middle">
+                                                <small class="text-muted">
+                                                    <i class="bi bi-clock"></i> @FormatDuration(chapter.Seconds)
+                                                </small>
+                                            </td>
+                                            <td class="align-middle">
+                                                @if (chapter.Transcoding)
+                                                {
+                                                    <span class="badge bg-warning">
+                                                        <span class="spinner-border spinner-border-sm me-1"></span> Processing
+                                                    </span>
+                                                }
+                                                else
+                                                {
+                                                    <span class="badge bg-success">
+                                                        <i class="bi bi-check-circle"></i> Ready
+                                                    </span>
+                                                }
+                                            </td>
+                                            <td class="align-middle text-end">
+                                                <button class="btn btn-sm btn-outline-danger" 
+                                                        @onclick="() => ShowDeleteConfirmation(chapter)"
+                                                        disabled="@(isDeleting || hasUnsavedChanges)"
+                                                        title="Delete chapter">
+                                                    <i class="bi bi-trash"></i>
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    }
                                 }
                             </tbody>
                         </table>
@@ -232,22 +235,48 @@
 </div>
 
 <style>
-    .drag-handle {
-        opacity: 0.5;
-        transition: opacity 0.2s;
-    }
-    
-    tr:hover .drag-handle {
-        opacity: 1;
+    tr[draggable="true"] {
+        user-select: none;
     }
     
     tr.dragging {
         opacity: 0.5;
-        background-color: #f0f0f0;
+        background-color: #e9ecef;
     }
     
     tr.drag-over {
         border-top: 3px solid #0d6efd;
+        background-color: #cfe2ff;
+    }
+</style>
+
+<style>
+    .drag-handle {
+        opacity: 0.3;
+        transition: opacity 0.2s;
+        font-size: 1.2rem;
+    }
+    
+    tr:hover .drag-handle {
+        opacity: 0.8;
+    }
+    
+    tr.dragging {
+        opacity: 0.4;
+        background-color: #e9ecef;
+    }
+    
+    tr.drag-over {
+        border-top: 4px solid #0d6efd;
+        background-color: #cfe2ff;
+    }
+    
+    tbody tr {
+        transition: background-color 0.2s;
+    }
+    
+    tbody tr[draggable="true"] {
+        user-select: none;
     }
 </style>
 
@@ -332,14 +361,28 @@
     private bool showDeleteModal = false;
     private ChapterDto? chapterToDelete;
     
-    // Drag & drop state
-    private int draggedIndex = -1;
-    private int dragOverIndex = -1;
+    // Reorder state
     private bool hasUnsavedChanges = false;
+    private DotNetObjectReference<Details>? dotnetRef;
 
     protected override async Task OnInitializedAsync()
     {
         await LoadTonieDetails();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            // Initialize JavaScript drag & drop
+            dotnetRef = DotNetObjectReference.Create(this);
+            await JS.InvokeVoidAsync("chapterDragDrop.init", dotnetRef);
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        dotnetRef?.Dispose();
     }
 
     private async Task LoadTonieDetails()
@@ -524,49 +567,33 @@
         return "bg-success";
     }
     
-    // Drag & Drop handlers
-    private void HandleDragStart(int index)
+    // Drag & Drop - JavaScript callback
+    [JSInvokable]
+    public void OnChapterDropped(int fromIndex, int toIndex)
     {
-        draggedIndex = index;
-        Logger.LogDebug("Drag started for chapter at index {Index}", index);
-    }
-    
-    private void HandleDragEnter(int index)
-    {
-        if (draggedIndex != index)
-        {
-            dragOverIndex = index;
-        }
-    }
-    
-    private void HandleDragLeave(int index)
-    {
-        if (dragOverIndex == index)
-        {
-            dragOverIndex = -1;
-        }
-    }
-    
-    private void HandleDrop(int dropIndex)
-    {
-        if (draggedIndex == -1 || draggedIndex == dropIndex || tonie?.Chapters == null)
+        Logger.LogInformation("Chapter dropped: {From} -> {To}", fromIndex, toIndex);
+        
+        if (tonie?.Chapters == null || fromIndex == toIndex)
             return;
-            
-        // Reorder chapters
+
         var chapters = tonie.Chapters;
-        var draggedChapter = chapters[draggedIndex];
-        chapters.RemoveAt(draggedIndex);
-        chapters.Insert(dropIndex, draggedChapter);
+        var chapter = chapters[fromIndex];
         
-        // Reset drag state
-        draggedIndex = -1;
-        dragOverIndex = -1;
+        chapters.RemoveAt(fromIndex);
+        chapters.Insert(toIndex, chapter);
         
-        // Mark as having unsaved changes
         hasUnsavedChanges = true;
-        
-        Logger.LogInformation("Chapter order changed. Unsaved changes: {HasChanges}", hasUnsavedChanges);
         StateHasChanged();
+        
+        // Re-attach event listeners after state change
+        InvokeAsync(async () =>
+        {
+            await Task.Delay(50);
+            await JS.InvokeVoidAsync("chapterDragDrop.attachEventListeners");
+        });
+        
+        Logger.LogInformation("Chapter '{Title}' moved from position {From} to {To}", 
+            chapter.Title, fromIndex + 1, toIndex + 1);
     }
     
     private async Task SaveChapterOrder()
@@ -633,8 +660,6 @@
         }).ToList();
         
         hasUnsavedChanges = false;
-        draggedIndex = -1;
-        dragOverIndex = -1;
         
         ShowSuccess("Changes discarded. Chapter order restored.");
         Logger.LogInformation("Cancelled chapter reordering for Tonie {TonieId}", TonieId);
