@@ -16,9 +16,11 @@ namespace BoxieHub.Data
         public DbSet<SyncJob> SyncJobs { get; set; }
         public DbSet<HouseholdMember> HouseholdMembers { get; set; }
         public DbSet<TonieCredential> TonieCredentials { get; set; }
-        public DbSet<AudioUploadHistory> AudioUploadHistories { get; set; }
-        
-        protected override void OnModelCreating(ModelBuilder builder)
+    public DbSet<AudioUploadHistory> AudioUploadHistories { get; set; }
+    public DbSet<MediaLibraryItem> MediaLibraryItems { get; set; }
+    public DbSet<MediaLibraryUsage> MediaLibraryUsages { get; set; }
+
+    protected override void OnModelCreating(ModelBuilder builder)
         {
             base.OnModelCreating(builder);
             

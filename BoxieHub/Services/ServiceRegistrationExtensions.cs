@@ -39,7 +39,8 @@ public static class ServiceRegistrationExtensions
         
         // Register Tonie service (high-level business logic)
         services.AddScoped<ITonieService, TonieService>();
-        
+        services.AddScoped<IMediaLibraryService, MediaLibraryService>();
+
         return services;
     }
 }

@@ -186,13 +186,15 @@
                                         var chapter = tonie.Chapters[i];
                                         var index = i + 1;
                                         var currentIndex = i;
-                                        <tr draggable="@(!IsChapterEditing(chapter.Id))"
+                                        // Allow dragging unless a chapter is being edited
+                                        var isDraggable = !IsChapterEditing(chapter.Id) && !editingChapters.Any();
+                                        <tr draggable="@(isDraggable ? "true" : "false")"
                                             @key="chapter.Id"
                                             data-chapter-index="@currentIndex"
                                             class="chapter-row"
-                                            style="cursor: @(IsChapterEditing(chapter.Id) ? "default" : "move");">
+                                            style="cursor: @(isDraggable ? "move" : "default");">
                                             <td class="align-middle text-muted">
-                                                @if (!IsChapterEditing(chapter.Id))
+                                                @if (isDraggable)
                                                 {
                                                     <i class="bi bi-grip-vertical me-2" style="opacity: 0.5;"></i>
                                                 }
@@ -578,6 +580,13 @@
         finally
         {
             isLoading = false;
+            
+            // Re-initialize drag & drop after data loads
+            await Task.Delay(100);
+            if (dotnetRef != null && tonie?.Chapters?.Any() == true)
+            {
+                await JS.InvokeVoidAsync("chapterDragDrop.attachEventListeners");
+            }
         }
     }
 
@@ -595,6 +604,13 @@
                 tonie = await TonieService.GetCreativeTonieDetailsAsync(userId, HouseholdId, TonieId, forceRefresh: true);
                 ShowSuccess("Tonie refreshed successfully");
                 Logger.LogInformation("Force refreshed Tonie {TonieId} from API", TonieId);
+                
+                // Re-initialize drag & drop
+                await Task.Delay(100);
+                if (dotnetRef != null && tonie?.Chapters?.Any() == true)
+                {
+                    await JS.InvokeVoidAsync("chapterDragDrop.attachEventListeners");
+                }
             }
         }
         catch (Exception ex)
