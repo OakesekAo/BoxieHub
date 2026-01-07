@@ -3,6 +3,7 @@ using BoxieHub.Models;
 using BoxieHub.Models.BoxieCloud;
 using BoxieHub.Services.BoxieCloud;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using System.Security.Claims;
 
 namespace BoxieHub.Services;
@@ -15,8 +16,10 @@ public interface ITonieService
 {
     /// <summary>
     /// Get all Creative Tonies for the authenticated user (from default account)
+    /// Results are cached for 5 minutes to reduce API calls
     /// </summary>
-    Task<List<CreativeTonieDto>> GetUserCreativeTonieAsync(string userId, CancellationToken ct = default);
+    /// <param name="forceRefresh">If true, bypasses cache and fetches fresh data</param>
+    Task<List<CreativeTonieDto>> GetUserCreativeTonieAsync(string userId, bool forceRefresh = false, CancellationToken ct = default);
     
     /// <summary>
     /// Get all households for the authenticated user
@@ -58,30 +61,50 @@ public interface ITonieService
         string tonieId, 
         string chapterId, 
         CancellationToken ct = default);
+        
+    /// <summary>
+    /// Clear cached Tonie data for a user (call after uploads/deletes)
+    /// </summary>
+    void ClearUserCache(string userId);
 }
 
 public class TonieService : ITonieService
 {
     private readonly IBoxieCloudClient _boxieCloudClient;
     private readonly ICredentialEncryptionService _encryption;
-    private readonly ApplicationDbContext _dbContext;
+    private readonly IDbContextFactory<ApplicationDbContext> _dbContextFactory;
+    private readonly IMemoryCache _cache;
     private readonly ILogger<TonieService> _logger;
+    
+    private static readonly TimeSpan CacheDuration = TimeSpan.FromMinutes(5);
+    private const string CacheKeyPrefix = "tonies_user_";
 
     public TonieService(
         IBoxieCloudClient boxieCloudClient,
         ICredentialEncryptionService encryption,
-        ApplicationDbContext dbContext,
+        IDbContextFactory<ApplicationDbContext> dbContextFactory,
+        IMemoryCache cache,
         ILogger<TonieService> logger)
     {
         _boxieCloudClient = boxieCloudClient;
         _encryption = encryption;
-        _dbContext = dbContext;
+        _dbContextFactory = dbContextFactory;
+        _cache = cache;
         _logger = logger;
     }
 
-    public async Task<List<CreativeTonieDto>> GetUserCreativeTonieAsync(string userId, CancellationToken ct = default)
+    public async Task<List<CreativeTonieDto>> GetUserCreativeTonieAsync(string userId, bool forceRefresh = false, CancellationToken ct = default)
     {
-        _logger.LogDebug("Starting GetUserCreativeTonieAsync for user {UserId}", userId);
+        var cacheKey = $"{CacheKeyPrefix}{userId}";
+        
+        // Return cached data if available and not forcing refresh
+        if (!forceRefresh && _cache.TryGetValue(cacheKey, out List<CreativeTonieDto>? cachedTonies) && cachedTonies != null)
+        {
+            _logger.LogDebug("Returning cached Tonies for user {UserId} ({Count} tonies)", userId, cachedTonies.Count);
+            return cachedTonies;
+        }
+        
+        _logger.LogDebug("Fetching fresh Tonie data for user {UserId} (forceRefresh: {ForceRefresh})", userId, forceRefresh);
         
         var credentials = await GetUserCredentialsAsync(userId);
         _logger.LogDebug("Retrieved credentials for {Username}", credentials.Username);
@@ -116,8 +139,11 @@ public class TonieService : ITonieService
                 allTonies.AddRange(tonies);
             }
 
-            _logger.LogInformation("Retrieved {TotalCount} Creative Tonies across {HouseholdCount} household(s) for user {UserId}", 
-                allTonies.Count, households.Count, userId);
+            // Cache the results
+            _cache.Set(cacheKey, allTonies, CacheDuration);
+            _logger.LogInformation("Cached {TotalCount} Creative Tonies for user {UserId} (expires in {Minutes} minutes)", 
+                allTonies.Count, userId, CacheDuration.TotalMinutes);
+
             return allTonies;
         }
         catch (Exception ex)
@@ -207,7 +233,8 @@ public class TonieService : ITonieService
     {
         try
         {
-            var tonies = await GetUserCreativeTonieAsync(userId, ct);
+            // Get Tonies (will use cache if available)
+            var tonies = await GetUserCreativeTonieAsync(userId, forceRefresh: false, ct);
 
             var stats = new TonieStatsViewModel
             {
@@ -255,6 +282,9 @@ public class TonieService : ITonieService
             {
                 _logger.LogInformation("Successfully uploaded audio '{Title}' to Tonie {TonieId} for user {UserId}",
                     chapterTitle, tonieId, userId);
+                
+                // Clear cache to force refresh on next load
+                ClearUserCache(userId);
             }
             else
             {
@@ -319,6 +349,10 @@ public class TonieService : ITonieService
 
             _logger.LogInformation("Successfully deleted chapter {ChapterId} from Tonie {TonieId}", 
                 chapterId, tonieId);
+            
+            // Clear cache to force refresh on next load
+            ClearUserCache(userId);
+            
             return true;
         }
         catch (Exception ex)
@@ -330,11 +364,23 @@ public class TonieService : ITonieService
     }
 
     /// <summary>
+    /// Clear cached Tonie data for a user
+    /// </summary>
+    public void ClearUserCache(string userId)
+    {
+        var cacheKey = $"{CacheKeyPrefix}{userId}";
+        _cache.Remove(cacheKey);
+        _logger.LogDebug("Cleared Tonie cache for user {UserId}", userId);
+    }
+
+    /// <summary>
     /// Get user's default Tonie Cloud credentials (username and decrypted password)
     /// </summary>
     private async Task<(string Username, string Password)> GetUserCredentialsAsync(string userId)
     {
-        var credential = await _dbContext.TonieCredentials
+        await using var dbContext = await _dbContextFactory.CreateDbContextAsync();
+        
+        var credential = await dbContext.TonieCredentials
             .Where(c => c.UserId == userId && c.IsDefault)
             .FirstOrDefaultAsync();
 
@@ -346,7 +392,7 @@ public class TonieService : ITonieService
 
         // Update last authenticated timestamp
         credential.LastAuthenticated = DateTimeOffset.UtcNow;
-        await _dbContext.SaveChangesAsync();
+        await dbContext.SaveChangesAsync();
 
         // Decrypt password
         var password = _encryption.Unprotect(credential.EncryptedPassword);

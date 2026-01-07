@@ -204,11 +204,18 @@ protected override async Task OnInitializedAsync()
                 return;
             }
 
-            // Load Tonies first (this also loads stats data)
+            // Load Tonies (single API call)
             tonies = await TonieService.GetUserCreativeTonieAsync(userId);
             
-            // Then calculate stats (reuses the same Tonie data)
-            stats = await TonieService.GetUserStatsAsync(userId);
+            // Calculate stats from the loaded Tonies (no additional API call or DbContext access)
+            stats = new TonieStatsViewModel
+            {
+                TotalTonies = tonies.Count,
+                TotalChapters = tonies.Sum(t => t.ChaptersPresent),
+                TotalSecondsPresent = tonies.Sum(t => t.SecondsPresent),
+                TotalSecondsRemaining = tonies.Sum(t => t.SecondsRemaining),
+                TotalDuration = TimeSpan.FromSeconds(tonies.Sum(t => t.SecondsPresent))
+            };
 
             Logger.LogInformation("Loaded {Count} Tonies for user {UserId}", tonies.Count, userId);
         }
@@ -234,7 +241,48 @@ protected override async Task OnInitializedAsync()
 
     private async Task RefreshData()
     {
-        await LoadData();
+        isLoading = true;
+        errorMessage = null;
+        errorDetails = null;
+        
+        try
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var userId = authState.User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+            if (string.IsNullOrEmpty(userId))
+            {
+                errorMessage = "User not authenticated";
+                return;
+            }
+
+            // Force refresh - bypass cache
+            tonies = await TonieService.GetUserCreativeTonieAsync(userId, forceRefresh: true);
+            
+            // Calculate stats from the loaded Tonies
+            stats = new TonieStatsViewModel
+            {
+                TotalTonies = tonies.Count,
+                TotalChapters = tonies.Sum(t => t.ChaptersPresent),
+                TotalSecondsPresent = tonies.Sum(t => t.SecondsPresent),
+                TotalSecondsRemaining = tonies.Sum(t => t.SecondsRemaining),
+                TotalDuration = TimeSpan.FromSeconds(tonies.Sum(t => t.SecondsPresent))
+            };
+
+            Logger.LogInformation("Refreshed {Count} Tonies for user {UserId}", tonies.Count, userId);
+        }
+        catch (Exception ex)
+        {
+            errorMessage = "Failed to refresh your Tonies. Please try again.";
+            errorDetails = $"Exception Type: {ex.GetType().Name}\n" +
+                          $"Message: {ex.Message}\n" +
+                          $"Stack Trace:\n{ex.StackTrace}";
+            Logger.LogError(ex, "Error refreshing Tonies");
+        }
+        finally
+        {
+            isLoading = false;
+        }
     }
 
     private string FormatDuration(float seconds)
