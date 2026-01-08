@@ -9,6 +9,7 @@
 @inject IMediaLibraryService MediaLibraryService
 @inject NavigationManager Navigation
 @inject AuthenticationStateProvider AuthenticationStateProvider
+@inject IJSRuntime JS
 
 <PageTitle>Add to Library - BoxieHub</PageTitle>
 
@@ -57,11 +58,23 @@
                     </div>
                     @if (selectedFile != null)
                     {
-                        <div class="mt-2">
-                            <small class="text-success">
-                                <i class="bi bi-file-earmark-music"></i> @selectedFile.Name 
-                                (@FormatFileSize(selectedFile.Size))
-                            </small>
+                        <div class="alert alert-info mt-2">
+                            <h6><i class="bi bi-file-earmark-music"></i> Selected File</h6>
+                            <p class="mb-1"><strong>Name:</strong> @selectedFile.Name</p>
+                            <p class="mb-1"><strong>Size:</strong> @FormatFileSize(selectedFile.Size)</p>
+                            @if (isCalculatingDuration)
+                            {
+                                <p class="mb-0">
+                                    <span class="spinner-border spinner-border-sm me-2"></span>
+                                    <strong>Calculating duration...</strong>
+                                </p>
+                            }
+                            else if (audioDurationSeconds > 0)
+                            {
+                                <p class="mb-0">
+                                    <strong>Duration:</strong> @FormatDuration((float)audioDurationSeconds)
+                                </p>
+                            }
                         </div>
                     }
                 </div>
@@ -188,6 +201,10 @@
     private string? errorMessage;
     private string? successMessage;
     private string uploadProgress = "Preparing upload...";
+    
+    // Audio duration detection
+    private double audioDurationSeconds = 0;
+    private bool isCalculatingDuration = false;
 
     private class UploadModel
     {
@@ -204,13 +221,16 @@
         public List<string> Tags { get; set; } = new();
     }
 
-    private void HandleFileSelected(InputFileChangeEventArgs e)
+    private async Task HandleFileSelected(InputFileChangeEventArgs e)
     {
         selectedFile = e.File;
         errorMessage = null;
+        audioDurationSeconds = 0;
+
+        if (selectedFile == null) return;
 
         // Auto-populate title from filename if empty
-        if (string.IsNullOrEmpty(uploadModel.Title) && selectedFile != null)
+        if (string.IsNullOrEmpty(uploadModel.Title))
         {
             uploadModel.Title = Path.GetFileNameWithoutExtension(selectedFile.Name);
         }
@@ -221,9 +241,51 @@
         {
             errorMessage = "File is too large. Maximum size is 200MB.";
             selectedFile = null;
+            StateHasChanged();
+            return;
         }
         
-        // Force UI update to enable button
+        // Validate file extension
+        var extension = Path.GetExtension(selectedFile.Name).ToLowerInvariant();
+        var allowedExtensions = new[] { ".mp3", ".m4a", ".ogg", ".wav", ".flac" };
+        
+        if (!allowedExtensions.Contains(extension))
+        {
+            errorMessage = "Invalid file format. Please upload MP3, M4A, OGG, WAV, or FLAC files.";
+            selectedFile = null;
+            StateHasChanged();
+            return;
+        }
+
+        // Calculate audio duration using JavaScript
+        try
+        {
+            isCalculatingDuration = true;
+            StateHasChanged();
+
+            // Read file into memory for JavaScript processing
+            const int maxAllowedSize = 200 * 1024 * 1024;
+            using var stream = selectedFile.OpenReadStream(maxAllowedSize);
+            using var ms = new MemoryStream();
+            await stream.CopyToAsync(ms);
+            var fileBytes = ms.ToArray();
+            
+            // Use JavaScript to detect audio duration
+            audioDurationSeconds = await JS.InvokeAsync<double>("getAudioDuration", 
+                fileBytes, 
+                selectedFile.ContentType);
+        }
+        catch (Exception ex)
+        {
+            // Don't block upload if duration detection fails
+            audioDurationSeconds = 0;
+            // You could log this but don't show error to user
+        }
+        finally
+        {
+            isCalculatingDuration = false;
+        }
+        
         StateHasChanged();
     }
 
@@ -286,7 +348,7 @@
                 ContentType = selectedFile.ContentType,
                 OriginalFileName = selectedFile.Name,
                 FileSizeBytes = selectedFile.Size,
-                DurationSeconds = 0 // TODO: Extract from audio metadata if possible
+                DurationSeconds = (float)audioDurationSeconds
             };
 
             uploadProgress = "Saving to library...";
@@ -326,5 +388,19 @@
             len = len / 1024;
         }
         return $"{len:0.##} {sizes[order]}";
+    }
+    
+    private string FormatDuration(float seconds)
+    {
+        var timeSpan = TimeSpan.FromSeconds(seconds);
+        if (timeSpan.TotalHours >= 1)
+        {
+            return $"{(int)timeSpan.TotalHours}h {timeSpan.Minutes}m";
+        }
+        if (timeSpan.TotalMinutes >= 1)
+        {
+            return $"{timeSpan.Minutes}m {timeSpan.Seconds}s";
+        }
+        return $"{timeSpan.TotalSeconds:F1}s";
     }
 }
