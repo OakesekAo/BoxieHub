@@ -11,6 +11,7 @@
 @inject ITonieService TonieService
 @inject IMediaLibraryService MediaLibraryService
 @inject IFileStorageService FileStorageService
+@inject IStoragePreferenceService StoragePreferenceService
 @inject AuthenticationStateProvider AuthStateProvider
 @inject NavigationManager Navigation
 @inject ILogger<Upload> Logger
@@ -160,6 +161,29 @@
                                     <i class="bi bi-exclamation-triangle-fill"></i> @validationError
                                 </div>
                             }
+
+                            <!-- Add to Library Option (only for new uploads) -->
+                            @if (selectedFile != null && !useLibrary)
+                            {
+                                <div class="card bg-light border-info mb-3">
+                                    <div class="card-body">
+                                        <div class="form-check">
+                                            <input class="form-check-input" 
+                                                   type="checkbox" 
+                                                   id="addToLibraryCheck"
+                                                   @bind="addToLibrary" />
+                                            <label class="form-check-label fw-bold" for="addToLibraryCheck">
+                                                <i class="bi bi-collection-play"></i> Also save to my library
+                                            </label>
+                                        </div>
+                                        <small class="text-muted d-block mt-2">
+                                            <i class="bi bi-info-circle"></i> 
+                                            Save this audio file to your library for easy reuse on other Tonies. 
+                                            You can add metadata and choose where to store it.
+                                        </small>
+                                    </div>
+                                </div>
+                            }
                         </div>
                         <div class="col-md-4">
                             <div class="card bg-light">
@@ -233,6 +257,18 @@
                             {
                                 <p class="mb-0">
                                     <strong>Tracks processed:</strong> @uploadResult.TracksProcessed
+                                </p>
+                            }
+                            @if (savedToLibrary && newLibraryItem != null)
+                            {
+                                <hr />
+                                <p class="mb-1">
+                                    <i class="bi bi-collection-play text-success"></i> 
+                                    <strong>Also saved to your library!</strong>
+                                </p>
+                                <p class="mb-0 small">
+                                    You can now reuse this audio on other Tonies from your library.
+                                    <a href="/library/@newLibraryItem.Id" class="alert-link">View in library</a>
                                 </p>
                             }
                         </div>
@@ -314,6 +350,11 @@
     private bool useLibrary = false;
     private bool showLibraryModal = false;
     private MediaLibraryItem? selectedLibraryItem;
+    
+    // Add to Library feature
+    private bool addToLibrary = false;
+    private bool savedToLibrary = false;
+    private MediaLibraryItem? newLibraryItem = null;
 
     private bool CanUpload =>
         !string.IsNullOrWhiteSpace(chapterTitle) &&
@@ -493,6 +534,9 @@
         isUploading = true;
         uploadResult = null;
 
+        // Buffer file data if we need to save to library (prevents "file already read" error)
+        byte[]? fileBuffer = null;
+
         try
         {
             var authState = await AuthStateProvider.GetAuthenticationStateAsync();
@@ -503,6 +547,18 @@
                 validationError = "User not authenticated";
                 isUploading = false;
                 return;
+            }
+            
+            // If we're going to save to library, buffer the file data first
+            if (addToLibrary && selectedFile != null && selectedLibraryItem == null)
+            {
+                Logger.LogInformation("Buffering file data for library save");
+                const int maxAllowedSize = 200 * 1024 * 1024;
+                using var tempStream = selectedFile.OpenReadStream(maxAllowedSize);
+                using var ms = new MemoryStream();
+                await tempStream.CopyToAsync(ms);
+                fileBuffer = ms.ToArray();
+                Logger.LogInformation("File buffered: {Size} bytes", fileBuffer.Length);
             }
 
             Stream stream;
@@ -553,10 +609,17 @@
                 
                 isFromLibrary = true;
             }
+            else if (fileBuffer != null)
+            {
+                // Use buffered file data
+                stream = new MemoryStream(fileBuffer);
+                Logger.LogInformation("Using buffered file data for upload");
+            }
             else if (selectedFile != null)
             {
-                // Use uploaded file
+                // Use uploaded file (only if not buffered)
                 stream = selectedFile.OpenReadStream(maxAllowedSize: 200 * 1024 * 1024);
+                Logger.LogInformation("Using direct file stream for upload");
             }
             else
             {
@@ -599,6 +662,21 @@
                             // Don't fail the upload if tracking fails
                         }
                     }
+                    
+                    // Save to library if requested (only for new uploads, not library items)
+                    if (addToLibrary && fileBuffer != null && !isFromLibrary && selectedFile != null)
+                    {
+                        savedToLibrary = await SaveToLibraryAsync(userId, fileBuffer, selectedFile.ContentType, 
+                            selectedFile.Name, chapterTitle);
+                        if (savedToLibrary)
+                        {
+                            Logger.LogInformation("Audio also saved to library for reuse");
+                        }
+                        else
+                        {
+                            Logger.LogWarning("Failed to save audio to library, but Tonie upload was successful");
+                        }
+                    }
                 }
                 else
                 {
@@ -621,6 +699,7 @@
             isUploading = false;
             selectedFile = null;
             selectedLibraryItem = null;
+            fileBuffer = null; // Clear buffer
         }
     }
 
@@ -635,6 +714,60 @@
         uploadResult = null;
         selectedLibraryItem = null;
         useLibrary = false;
+        addToLibrary = false;
+        savedToLibrary = false;
+        newLibraryItem = null;
+    }
+    
+    /// <summary>
+    /// Save the uploaded file to the user's library
+    /// Called after successful Tonie upload if addToLibrary is true
+    /// Uses buffered file data to avoid re-reading browser file
+    /// </summary>
+    private async Task<bool> SaveToLibraryAsync(string userId, byte[] fileData, string contentType, 
+        string fileName, string title)
+    {
+        try
+        {
+            Logger.LogInformation("Saving uploaded audio '{Title}' to library", title);
+            
+            // Get user's default storage provider
+            var provider = await StoragePreferenceService.GetDefaultProviderAsync(userId);
+            
+            // Create DTO for library item
+            var dto = new MediaLibraryItemDto
+            {
+                Title = title,
+                Description = $"Uploaded to {tonie?.Name} on {DateTime.Now:MMM dd, yyyy}",
+                Category = "Audio",
+                Tags = new List<string> { "tonie-upload" },
+                ContentType = contentType,
+                OriginalFileName = fileName,
+                FileSizeBytes = fileData.Length,
+                DurationSeconds = (float)audioDurationSeconds
+            };
+            
+            // Create stream from buffered data
+            using var stream = new MemoryStream(fileData);
+            
+            // Save to library
+            newLibraryItem = await MediaLibraryService.AddToLibraryAsync(
+                userId, 
+                stream, 
+                dto, 
+                provider,
+                null); // No specific storage account
+            
+            Logger.LogInformation("Successfully saved '{Title}' to library (ID: {ItemId}, Provider: {Provider})", 
+                title, newLibraryItem.Id, provider);
+            
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to save audio to library");
+            return false;
+        }
     }
 
     private string FormatFileSize(long bytes)

@@ -53,6 +53,7 @@ public class MediaLibraryService : IMediaLibraryService
         await using var dbContext = await _dbContextFactory.CreateDbContextAsync(ct);
         
         return await dbContext.MediaLibraryItems
+            .Include(m => m.FileUpload) // Include FileUpload for "Use from Library" flow
             .Where(m => m.UserId == userId)
             .OrderByDescending(m => m.Created)
             .ToListAsync(ct);
