@@ -1,11 +1,16 @@
 @rendermode InteractiveServer
 @page "/tonies/{householdId}/{tonieId}/upload"
+@using BoxieHub.Models
 @using BoxieHub.Models.BoxieCloud
 @using BoxieHub.Services
+@using BoxieHub.Services.Storage
 @using BoxieHub.Helpers
 @using System.Security.Claims
 @using Microsoft.AspNetCore.Authorization
+@using BoxieHub.Components.Pages.Library.Components
 @inject ITonieService TonieService
+@inject IMediaLibraryService MediaLibraryService
+@inject IFileStorageService FileStorageService
 @inject AuthenticationStateProvider AuthStateProvider
 @inject NavigationManager Navigation
 @inject ILogger<Upload> Logger
@@ -67,14 +72,57 @@
                                 <small class="text-muted">Give your chapter a descriptive name</small>
                             </div>
 
+                            <!-- Library Browser or File Upload -->
                             <div class="mb-4">
-                                <label class="form-label">Audio File *</label>
-                                <InputFile OnChange="HandleFileSelected" 
-                                          class="form-control" 
-                                          accept=".mp3,.m4a,.ogg,.wav" />
-                                <small class="text-muted">
-                                    <i class="bi bi-info-circle"></i> Supported formats: MP3, M4A, OGG, WAV (Max: 200 MB)
-                                </small>
+                                <div class="d-flex gap-2 mb-3">
+                                    <button class="btn @(useLibrary ? "btn-outline-secondary" : "btn-primary")" 
+                                            @onclick="() => useLibrary = false"
+                                            type="button">
+                                        <i class="bi bi-upload"></i> Upload New File
+                                    </button>
+                                    <button class="btn @(useLibrary ? "btn-primary" : "btn-outline-secondary")" 
+                                            @onclick="() => { useLibrary = true; showLibraryModal = true; }"
+                                            type="button">
+                                        <i class="bi bi-collection-play"></i> Use from Library
+                                    </button>
+                                </div>
+
+                                @if (!useLibrary)
+                                {
+                                    <label class="form-label">Audio File *</label>
+                                    <InputFile OnChange="HandleFileSelected" 
+                                              class="form-control" 
+                                              accept=".mp3,.m4a,.ogg,.wav" />
+                                    <small class="text-muted">
+                                        <i class="bi bi-info-circle"></i> Supported formats: MP3, M4A, OGG, WAV (Max: 200 MB)
+                                    </small>
+                                }
+                                else if (selectedLibraryItem != null)
+                                {
+                                    <div class="alert alert-success">
+                                        <div class="d-flex justify-content-between align-items-start">
+                                            <div>
+                                                <h6><i class="bi bi-collection-play"></i> Selected from Library</h6>
+                                                <p class="mb-1"><strong>@selectedLibraryItem.Title</strong></p>
+                                                @if (!string.IsNullOrEmpty(selectedLibraryItem.Description))
+                                                {
+                                                    <p class="mb-1 text-muted small">@selectedLibraryItem.Description</p>
+                                                }
+                                                <p class="mb-0">
+                                                    <small>
+                                                        <i class="bi bi-clock"></i> @selectedLibraryItem.FormattedDuration
+                                                        · <i class="bi bi-hdd"></i> @selectedLibraryItem.FormattedFileSize
+                                                    </small>
+                                                </p>
+                                            </div>
+                                            <button class="btn btn-sm btn-outline-secondary" 
+                                                    @onclick="ClearLibrarySelection"
+                                                    type="button">
+                                                <i class="bi bi-x"></i>
+                                            </button>
+                                        </div>
+                                    </div>
+                                }
                             </div>
 
                             @if (selectedFile != null)
@@ -235,12 +283,18 @@
     }
 </div>
 
+<!-- Library Browser Modal -->
+<LibraryBrowserModal @bind-IsVisible="showLibraryModal" OnItemSelected="HandleLibraryItemSelected" />
+
 @code {
     [Parameter]
     public string HouseholdId { get; set; } = string.Empty;
 
     [Parameter]
     public string TonieId { get; set; } = string.Empty;
+
+    [SupplyParameterFromQuery]
+    public int? FromLibrary { get; set; }
 
     private CreativeTonieDto? tonie;
     private bool isLoading = true;
@@ -256,14 +310,25 @@
     private double audioDurationSeconds = 0;
     private bool isCalculatingDuration = false;
 
+    // Library integration
+    private bool useLibrary = false;
+    private bool showLibraryModal = false;
+    private MediaLibraryItem? selectedLibraryItem;
+
     private bool CanUpload =>
         !string.IsNullOrWhiteSpace(chapterTitle) &&
-        selectedFile != null &&
+        (selectedFile != null || selectedLibraryItem != null) &&
         string.IsNullOrEmpty(validationError);
 
     protected override async Task OnInitializedAsync()
     {
         await LoadTonieDetails();
+        
+        // Auto-select library item if provided via query parameter
+        if (FromLibrary.HasValue)
+        {
+            await LoadLibraryItemFromQuery(FromLibrary.Value);
+        }
     }
 
     private async Task LoadTonieDetails()
@@ -301,6 +366,8 @@
         validationError = null;
         selectedFile = e.File;
         audioDurationSeconds = 0;
+        selectedLibraryItem = null; // Clear library selection
+        useLibrary = false;
 
         if (selectedFile != null)
         {
@@ -385,9 +452,43 @@
         }
     }
 
+    private async Task HandleLibraryItemSelected(MediaLibraryItem item)
+    {
+        selectedLibraryItem = item;
+        selectedFile = null; // Clear file upload
+        validationError = null;
+        
+        // Auto-fill title if empty
+        if (string.IsNullOrWhiteSpace(chapterTitle))
+        {
+            chapterTitle = item.Title;
+        }
+
+        // Set duration from library item
+        audioDurationSeconds = item.DurationSeconds;
+
+        // Validate duration against available storage
+        if (tonie != null && audioDurationSeconds > tonie.SecondsRemaining)
+        {
+            var durationFormatted = FormatDuration((float)audioDurationSeconds);
+            var availableFormatted = FormatDuration(tonie.SecondsRemaining);
+            validationError = $"Audio duration ({durationFormatted}) exceeds available storage ({availableFormatted}).";
+            selectedLibraryItem = null;
+            audioDurationSeconds = 0;
+        }
+    }
+
+    private void ClearLibrarySelection()
+    {
+        selectedLibraryItem = null;
+        useLibrary = false;
+        chapterTitle = string.Empty;
+        audioDurationSeconds = 0;
+    }
+
     private async Task StartUpload()
     {
-        if (!CanUpload || selectedFile == null) return;
+        if (!CanUpload) return;
 
         isUploading = true;
         uploadResult = null;
@@ -404,24 +505,105 @@
                 return;
             }
 
-            // Open file stream
-            using var stream = selectedFile.OpenReadStream(maxAllowedSize: 200 * 1024 * 1024);
+            Stream stream;
+            bool isFromLibrary = false;
 
-            // Upload to Tonie Cloud
-            uploadResult = await TonieService.UploadAudioToTonieAsync(
-                userId,
-                HouseholdId,
-                TonieId,
-                stream,
-                chapterTitle);
-
-            if (uploadResult.Success)
+            // Get stream from either file upload or library
+            if (selectedLibraryItem != null && selectedLibraryItem.FileUpload != null)
             {
-                Logger.LogInformation("Successfully uploaded '{Title}' to Tonie {TonieId}", chapterTitle, TonieId);
+                // Use library item - download from storage
+                var fileUpload = selectedLibraryItem.FileUpload;
+                
+                if (fileUpload.Provider == StorageProvider.Database && fileUpload.Data != null)
+                {
+                    // Legacy: stored in database
+                    stream = new MemoryStream(fileUpload.Data);
+                    Logger.LogInformation("Uploading from library (Database): {Title}", selectedLibraryItem.Title);
+                }
+                else if (!string.IsNullOrEmpty(fileUpload.StoragePath))
+                {
+                    // Download from external storage (S3, Dropbox, GDrive)
+                    try
+                    {
+                        Logger.LogInformation("Downloading file from {Provider}: {StoragePath}", 
+                            fileUpload.Provider, fileUpload.StoragePath);
+                        
+                        stream = await FileStorageService.DownloadFileAsync(
+                            fileUpload.StoragePath,
+                            fileUpload.UserStorageAccountId);
+                        
+                        Logger.LogInformation("Successfully downloaded from {Provider}, now uploading to Tonie", 
+                            fileUpload.Provider);
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.LogError(ex, "Failed to download file from storage: {StoragePath}", 
+                            fileUpload.StoragePath);
+                        validationError = $"Failed to download file from storage: {ex.Message}";
+                        isUploading = false;
+                        return;
+                    }
+                }
+                else
+                {
+                    validationError = "Library item has no file data or storage path";
+                    isUploading = false;
+                    return;
+                }
+                
+                isFromLibrary = true;
+            }
+            else if (selectedFile != null)
+            {
+                // Use uploaded file
+                stream = selectedFile.OpenReadStream(maxAllowedSize: 200 * 1024 * 1024);
             }
             else
             {
-                Logger.LogWarning("Upload failed for '{Title}': {Error}", chapterTitle, uploadResult.ErrorDetails);
+                validationError = "No file selected";
+                isUploading = false;
+                return;
+            }
+
+            using (stream)
+            {
+                // Upload to Tonie Cloud
+                uploadResult = await TonieService.UploadAudioToTonieAsync(
+                    userId,
+                    HouseholdId,
+                    TonieId,
+                    stream,
+                    chapterTitle);
+
+                if (uploadResult.Success)
+                {
+                    Logger.LogInformation("Successfully uploaded '{Title}' to Tonie {TonieId}", chapterTitle, TonieId);
+                    
+                    // Track usage if from library
+                    if (isFromLibrary && selectedLibraryItem != null)
+                    {
+                        try
+                        {
+                            await MediaLibraryService.TrackUsageAsync(
+                                selectedLibraryItem.Id,
+                                HouseholdId,
+                                TonieId,
+                                chapterTitle, // Using chapterTitle as chapterId for now
+                                tonie?.Name,
+                                chapterTitle);
+                            Logger.LogInformation("Tracked library usage for item {ItemId}", selectedLibraryItem.Id);
+                        }
+                        catch (Exception ex)
+                        {
+                            Logger.LogWarning(ex, "Failed to track library usage");
+                            // Don't fail the upload if tracking fails
+                        }
+                    }
+                }
+                else
+                {
+                    Logger.LogWarning("Upload failed for '{Title}': {Error}", chapterTitle, uploadResult.ErrorDetails);
+                }
             }
         }
         catch (Exception ex)
@@ -438,6 +620,7 @@
         {
             isUploading = false;
             selectedFile = null;
+            selectedLibraryItem = null;
         }
     }
 
@@ -450,6 +633,8 @@
         audioDurationSeconds = 0;
         validationError = null;
         uploadResult = null;
+        selectedLibraryItem = null;
+        useLibrary = false;
     }
 
     private string FormatFileSize(long bytes)
@@ -478,5 +663,36 @@
         }
         // Show seconds for very short audio (less than 1 minute)
         return $"{timeSpan.TotalSeconds:F1}s";
+    }
+    
+    private async Task LoadLibraryItemFromQuery(int itemId)
+    {
+        try
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var userId = authState.User.FindFirstValue(ClaimTypes.NameIdentifier);
+            
+            if (string.IsNullOrEmpty(userId))
+            {
+                Logger.LogWarning("User not authenticated, cannot load library item");
+                return;
+            }
+            
+            var item = await MediaLibraryService.GetLibraryItemAsync(itemId, userId);
+            if (item != null)
+            {
+                useLibrary = true;
+                await HandleLibraryItemSelected(item);
+                Logger.LogInformation("Auto-selected library item {ItemId} from query parameter", itemId);
+            }
+            else
+            {
+                Logger.LogWarning("Library item {ItemId} not found", itemId);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to load library item {ItemId} from query parameter", itemId);
+        }
     }
 }

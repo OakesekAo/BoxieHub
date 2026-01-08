@@ -35,7 +35,7 @@ builder.Services.AddControllers();
 builder.Services.AddHttpClient();
 
 // Register BoxieCloud services (C# Tonie Cloud implementation)
-builder.Services.AddBoxieCloudServices();
+builder.Services.AddBoxieCloudServices(builder.Configuration);
 
 builder.Services.AddOutputCache();
 

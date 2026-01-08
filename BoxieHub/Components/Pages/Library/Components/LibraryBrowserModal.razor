@@ -1,0 +1,268 @@
+@using BoxieHub.Models
+@using BoxieHub.Services
+@inject IMediaLibraryService MediaLibraryService
+@inject AuthenticationStateProvider AuthenticationStateProvider
+
+@if (IsVisible)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="bi bi-collection-play"></i> Select from Library
+                    </h5>
+                    <button type="button" class="btn-close" @onclick="Close"></button>
+                </div>
+                <div class="modal-body">
+                    @if (isLoading)
+                    {
+                        <div class="text-center py-5">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            <p class="mt-3 text-muted">Loading your library...</p>
+                        </div>
+                    }
+                    else if (!string.IsNullOrEmpty(errorMessage))
+                    {
+                        <div class="alert alert-danger">
+                            <i class="bi bi-exclamation-triangle"></i> @errorMessage
+                        </div>
+                    }
+                    else if (!libraryItems.Any())
+                    {
+                        <div class="text-center py-5">
+                            <i class="bi bi-collection-play display-4 text-muted"></i>
+                            <h5 class="mt-3">Your library is empty</h5>
+                            <p class="text-muted">Add audio files to your library first</p>
+                            <a href="/library/upload" class="btn btn-primary">
+                                <i class="bi bi-upload"></i> Upload to Library
+                            </a>
+                        </div>
+                    }
+                    else
+                    {
+                        <!-- Search Bar -->
+                        <div class="mb-3">
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="bi bi-search"></i></span>
+                                <input type="text" 
+                                       class="form-control" 
+                                       placeholder="Search library..." 
+                                       @bind="searchQuery"
+                                       @bind:event="oninput"
+                                       @onkeyup="ApplyFilter" />
+                            </div>
+                        </div>
+
+                        <!-- Filter Buttons -->
+                        <div class="mb-3 d-flex gap-2 flex-wrap">
+                            <button class="btn btn-sm @(selectedCategory == "" ? "btn-primary" : "btn-outline-secondary")"
+                                    @onclick='() => FilterByCategory("")'>
+                                All
+                            </button>
+                            @foreach (var category in categories)
+                            {
+                                <button class="btn btn-sm @(selectedCategory == category ? "btn-primary" : "btn-outline-secondary")"
+                                        @onclick="() => FilterByCategory(category)">
+                                    @category
+                                </button>
+                            }
+                        </div>
+
+                        <!-- Items List -->
+                        <div class="list-group" style="max-height: 400px; overflow-y: auto;">
+                            @foreach (var item in filteredItems)
+                            {
+                                <button type="button" 
+                                        class="list-group-item list-group-item-action @(selectedItem?.Id == item.Id ? "active" : "")"
+                                        @onclick="() => SelectItem(item)">
+                                    <div class="d-flex justify-content-between align-items-start">
+                                        <div class="flex-grow-1">
+                                            <div class="d-flex align-items-center mb-1">
+                                                <strong class="me-2">@item.Title</strong>
+                                                @if (!string.IsNullOrEmpty(item.Category))
+                                                {
+                                                    <span class="badge bg-secondary">@item.Category</span>
+                                                }
+                                            </div>
+                                            @if (!string.IsNullOrEmpty(item.Description))
+                                            {
+                                                <small class="text-muted d-block mb-1">
+                                                    @(item.Description.Length > 100 
+                                                        ? item.Description.Substring(0, 100) + "..." 
+                                                        : item.Description)
+                                                </small>
+                                            }
+                                            <div class="d-flex gap-2">
+                                                <small class="text-muted">
+                                                    <i class="bi bi-clock"></i> @item.FormattedDuration
+                                                </small>
+                                                <small class="text-muted">
+                                                    <i class="bi bi-hdd"></i> @item.FormattedFileSize
+                                                </small>
+                                                @if (item.UseCount > 0)
+                                                {
+                                                    <small class="text-success">
+                                                        <i class="bi bi-disc"></i> Used @item.UseCount times
+                                                    </small>
+                                                }
+                                            </div>
+                                        </div>
+                                        @if (selectedItem?.Id == item.Id)
+                                        {
+                                            <i class="bi bi-check-circle-fill text-white fs-4"></i>
+                                        }
+                                    </div>
+                                </button>
+                            }
+                        </div>
+
+                        @if (!filteredItems.Any())
+                        {
+                            <div class="text-center py-4">
+                                <i class="bi bi-search display-4 text-muted"></i>
+                                <p class="mt-3 text-muted">No items found</p>
+                            </div>
+                        }
+                    }
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="Close">
+                        Cancel
+                    </button>
+                    <button type="button" 
+                            class="btn btn-primary" 
+                            disabled="@(selectedItem == null)"
+                            @onclick="ConfirmSelection">
+                        <i class="bi bi-check-lg"></i> Use Selected Item
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter]
+    public bool IsVisible { get; set; }
+
+    [Parameter]
+    public EventCallback<bool> IsVisibleChanged { get; set; }
+
+    [Parameter]
+    public EventCallback<MediaLibraryItem> OnItemSelected { get; set; }
+
+    private List<MediaLibraryItem> libraryItems = new();
+    private List<MediaLibraryItem> filteredItems = new();
+    private MediaLibraryItem? selectedItem;
+    
+    private bool isLoading = true;
+    private string? errorMessage;
+    private string searchQuery = "";
+    private string selectedCategory = "";
+    private List<string> categories = new();
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (IsVisible && !libraryItems.Any() && isLoading)
+        {
+            await LoadLibrary();
+        }
+    }
+
+    private async Task LoadLibrary()
+    {
+        isLoading = true;
+        errorMessage = null;
+
+        try
+        {
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            var userId = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+
+            if (string.IsNullOrEmpty(userId))
+            {
+                errorMessage = "User not authenticated";
+                return;
+            }
+
+            libraryItems = await MediaLibraryService.GetUserLibraryAsync(userId);
+            
+            // Extract unique categories
+            categories = libraryItems
+                .Where(i => !string.IsNullOrEmpty(i.Category))
+                .Select(i => i.Category!)
+                .Distinct()
+                .OrderBy(c => c)
+                .ToList();
+
+            ApplyFilter();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error loading library: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private void ApplyFilter()
+    {
+        filteredItems = libraryItems.ToList();
+
+        // Search filter
+        if (!string.IsNullOrWhiteSpace(searchQuery))
+        {
+            var query = searchQuery.ToLower();
+            filteredItems = filteredItems.Where(item =>
+                item.Title.ToLower().Contains(query) ||
+                (item.Description != null && item.Description.ToLower().Contains(query)) ||
+                (item.Category != null && item.Category.ToLower().Contains(query))
+            ).ToList();
+        }
+
+        // Category filter
+        if (!string.IsNullOrWhiteSpace(selectedCategory))
+        {
+            filteredItems = filteredItems.Where(item => item.Category == selectedCategory).ToList();
+        }
+
+        // Sort by most used and recently added
+        filteredItems = filteredItems
+            .OrderByDescending(item => item.UseCount)
+            .ThenByDescending(item => item.Created)
+            .ToList();
+    }
+
+    private void FilterByCategory(string category)
+    {
+        selectedCategory = category;
+        ApplyFilter();
+    }
+
+    private void SelectItem(MediaLibraryItem item)
+    {
+        selectedItem = item;
+    }
+
+    private async Task ConfirmSelection()
+    {
+        if (selectedItem != null)
+        {
+            await OnItemSelected.InvokeAsync(selectedItem);
+            await Close();
+        }
+    }
+
+    private async Task Close()
+    {
+        selectedItem = null;
+        searchQuery = "";
+        selectedCategory = "";
+        await IsVisibleChanged.InvokeAsync(false);
+    }
+}

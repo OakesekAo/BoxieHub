@@ -1,5 +1,6 @@
 using BoxieHub.Data;
 using BoxieHub.Models;
+using BoxieHub.Services.Storage;
 using Microsoft.EntityFrameworkCore;
 
 namespace BoxieHub.Services;
@@ -13,7 +14,7 @@ public interface IMediaLibraryService
     // CRUD Operations
     Task<List<MediaLibraryItem>> GetUserLibraryAsync(string userId, CancellationToken ct = default);
     Task<MediaLibraryItem?> GetLibraryItemAsync(int id, string userId, CancellationToken ct = default);
-    Task<MediaLibraryItem> AddToLibraryAsync(string userId, Stream audioStream, MediaLibraryItemDto dto, CancellationToken ct = default);
+    Task<MediaLibraryItem> AddToLibraryAsync(string userId, Stream audioStream, MediaLibraryItemDto dto, StorageProvider? provider = null, int? storageAccountId = null, CancellationToken ct = default);
     Task<bool> UpdateLibraryItemAsync(int id, string userId, MediaLibraryItemDto dto, CancellationToken ct = default);
     Task<bool> DeleteLibraryItemAsync(int id, string userId, CancellationToken ct = default);
     
@@ -31,13 +32,19 @@ public interface IMediaLibraryService
 public class MediaLibraryService : IMediaLibraryService
 {
     private readonly IDbContextFactory<ApplicationDbContext> _dbContextFactory;
+    private readonly IFileStorageService _fileStorageService;
+    private readonly IStoragePreferenceService _storagePreferenceService;
     private readonly ILogger<MediaLibraryService> _logger;
 
     public MediaLibraryService(
         IDbContextFactory<ApplicationDbContext> dbContextFactory,
+        IFileStorageService fileStorageService,
+        IStoragePreferenceService storagePreferenceService,
         ILogger<MediaLibraryService> logger)
     {
         _dbContextFactory = dbContextFactory;
+        _fileStorageService = fileStorageService;
+        _storagePreferenceService = storagePreferenceService;
         _logger = logger;
     }
 
@@ -65,33 +72,71 @@ public class MediaLibraryService : IMediaLibraryService
         string userId, 
         Stream audioStream, 
         MediaLibraryItemDto dto, 
+        StorageProvider? provider = null,
+        int? storageAccountId = null,
         CancellationToken ct = default)
     {
         await using var dbContext = await _dbContextFactory.CreateDbContextAsync(ct);
 
         try
         {
-            // Read audio data
-            using var ms = new MemoryStream();
-            await audioStream.CopyToAsync(ms, ct);
-            var audioData = ms.ToArray();
-
             // Validate file size (max 200MB)
             const long maxSizeBytes = 200 * 1024 * 1024;
-            if (audioData.Length > maxSizeBytes)
+            if (audioStream.Length > maxSizeBytes)
             {
                 throw new InvalidOperationException($"Audio file too large. Maximum size is 200MB.");
             }
 
-            // Create FileUpload
+            // Determine storage provider
+            if (!provider.HasValue)
+            {
+                provider = await _storagePreferenceService.GetDefaultProviderAsync(userId, ct);
+            }
+
+            string? storagePath = null;
+            byte[]? fileData = null;
+
+            // Handle storage based on provider
+            if (provider == StorageProvider.Database)
+            {
+                // Legacy: Store in database
+                _logger.LogInformation("Storing audio file '{FileName}' in database for user {UserId}", 
+                    dto.OriginalFileName, userId);
+                
+                using var ms = new MemoryStream();
+                await audioStream.CopyToAsync(ms, ct);
+                fileData = ms.ToArray();
+            }
+            else
+            {
+                // Store in external storage (S3, Dropbox, GDrive)
+                _logger.LogInformation("Uploading audio file '{FileName}' to {Provider} for user {UserId}", 
+                    dto.OriginalFileName, provider.Value, userId);
+
+                storagePath = await _fileStorageService.UploadFileAsync(
+                    audioStream,
+                    dto.OriginalFileName ?? "audio.mp3",
+                    dto.ContentType,
+                    userId,
+                    storageAccountId,
+                    ct);
+
+                _logger.LogInformation("Successfully uploaded to {Provider}: {StoragePath}", 
+                    provider.Value, storagePath);
+            }
+
+            // Create FileUpload record
             var fileUpload = new FileUpload
             {
                 Id = Guid.NewGuid(),
-                Data = audioData,
+                Data = fileData, // NULL for external storage
                 ContentType = dto.ContentType,
                 FileName = dto.OriginalFileName,
                 FileCategory = "Audio",
-                FileSizeBytes = audioData.Length,
+                FileSizeBytes = dto.FileSizeBytes,
+                Provider = provider.Value,
+                StoragePath = storagePath,
+                UserStorageAccountId = storageAccountId,
                 Created = DateTimeOffset.UtcNow
             };
 
@@ -117,8 +162,11 @@ public class MediaLibraryService : IMediaLibraryService
             dbContext.MediaLibraryItems.Add(item);
             await dbContext.SaveChangesAsync(ct);
 
-            _logger.LogInformation("Added media item '{Title}' to library for user {UserId}", 
-                dto.Title, userId);
+            // Update user's last used provider
+            await _storagePreferenceService.UpdateLastUsedAsync(userId, provider.Value, storageAccountId, ct);
+
+            _logger.LogInformation("Added media item '{Title}' to library for user {UserId} (Provider: {Provider})", 
+                dto.Title, userId, provider.Value);
 
             return item;
         }
@@ -186,9 +234,23 @@ public class MediaLibraryService : IMediaLibraryService
             // Remove usages
             dbContext.MediaLibraryUsages.RemoveRange(item.Usages);
             
-            // Remove the file upload
-            if (item.FileUpload != null)
+            // Delete file from S3 storage
+            if (item.FileUpload != null && !string.IsNullOrEmpty(item.FileUpload.StoragePath))
             {
+                try
+                {
+                    await _fileStorageService.DeleteFileAsync(
+                        item.FileUpload.StoragePath,
+                        item.FileUpload.UserStorageAccountId,
+                        ct);
+                    _logger.LogInformation("Deleted file from S3: {StoragePath}", item.FileUpload.StoragePath);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to delete file from S3: {StoragePath}", item.FileUpload.StoragePath);
+                    // Continue with database deletion even if S3 delete fails
+                }
+                
                 dbContext.FileUploads.Remove(item.FileUpload);
             }
             

@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using BoxieHub.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -12,9 +13,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace BoxieHub.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260107232014_AddFileUploadStorageColumns")]
+    partial class AddFileUploadStorageColumns
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -760,48 +763,6 @@ namespace BoxieHub.Migrations
                     b.ToTable("UserStorageAccounts");
                 });
 
-            modelBuilder.Entity("BoxieHub.Models.UserStoragePreference", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<DateTimeOffset>("Created")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<int>("DefaultProvider")
-                        .HasColumnType("integer");
-
-                    b.Property<int?>("DefaultStorageAccountId")
-                        .HasColumnType("integer");
-
-                    b.Property<int?>("LastUsedProvider")
-                        .HasColumnType("integer");
-
-                    b.Property<int?>("LastUsedStorageAccountId")
-                        .HasColumnType("integer");
-
-                    b.Property<DateTimeOffset?>("Modified")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("UserId")
-                        .IsRequired()
-                        .HasMaxLength(450)
-                        .HasColumnType("character varying(450)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("DefaultStorageAccountId");
-
-                    b.HasIndex("UserId")
-                        .IsUnique()
-                        .HasDatabaseName("IX_UserStoragePreferences_UserId");
-
-                    b.ToTable("UserStoragePreferences");
-                });
-
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRole", b =>
                 {
                     b.Property<string>("Id")
@@ -1129,23 +1090,6 @@ namespace BoxieHub.Migrations
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
-
-                    b.Navigation("User");
-                });
-
-            modelBuilder.Entity("BoxieHub.Models.UserStoragePreference", b =>
-                {
-                    b.HasOne("BoxieHub.Models.UserStorageAccount", "DefaultStorageAccount")
-                        .WithMany()
-                        .HasForeignKey("DefaultStorageAccountId");
-
-                    b.HasOne("BoxieHub.Models.ApplicationUser", "User")
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("DefaultStorageAccount");
 
                     b.Navigation("User");
                 });

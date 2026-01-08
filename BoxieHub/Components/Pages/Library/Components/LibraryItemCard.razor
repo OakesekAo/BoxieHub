@@ -1,0 +1,139 @@
+@using BoxieHub.Models
+
+<div class="card h-100 library-item-card @(IsSelected ? "border-primary" : "")" 
+     @onclick="HandleClick"
+     style="cursor: pointer;">
+    <div class="card-body">
+        <div class="d-flex align-items-start mb-2">
+            <div class="flex-grow-1">
+                <h6 class="card-title mb-1">@Item.Title</h6>
+                @if (!string.IsNullOrEmpty(Item.Description))
+                {
+                    <small class="text-muted d-block mb-2" style="font-size: 0.85rem;">
+                        @(Item.Description.Length > MaxDescriptionLength 
+                            ? Item.Description.Substring(0, MaxDescriptionLength) + "..." 
+                            : Item.Description)
+                    </small>
+                }
+            </div>
+            @if (ShowActions)
+            {
+                <div class="dropdown" @onclick:stopPropagation>
+                    <button class="btn btn-sm btn-link text-muted" 
+                            type="button" 
+                            data-bs-toggle="dropdown" 
+                            aria-expanded="false">
+                        <i class="bi bi-three-dots-vertical"></i>
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end">
+                        <li>
+                            <button class="dropdown-item" @onclick="() => OnEdit.InvokeAsync(Item)">
+                                <i class="bi bi-pencil"></i> Edit
+                            </button>
+                        </li>
+                        <li>
+                            <button class="dropdown-item" @onclick="() => OnDelete.InvokeAsync(Item)">
+                                <i class="bi bi-trash text-danger"></i> Delete
+                            </button>
+                        </li>
+                    </ul>
+                </div>
+            }
+        </div>
+        
+        <div class="d-flex gap-2 mb-2 flex-wrap">
+            <small class="text-muted">
+                <i class="bi bi-clock"></i> @Item.FormattedDuration
+            </small>
+            <small class="text-muted">
+                <i class="bi bi-hdd"></i> @Item.FormattedFileSize
+            </small>
+        </div>
+
+        @if (!string.IsNullOrEmpty(Item.Category))
+        {
+            <span class="badge bg-secondary">@Item.Category</span>
+        }
+
+        @if (Item.UseCount > 0)
+        {
+            <div class="mt-2">
+                <small class="text-success">
+                    <i class="bi bi-disc"></i> Used @Item.UseCount time(s)
+                </small>
+            </div>
+        }
+
+        @if (ShowDate)
+        {
+            <div class="mt-2">
+                <small class="text-muted">
+                    <i class="bi bi-calendar"></i> @Item.Created.ToString("MMM d, yyyy")
+                </small>
+            </div>
+        }
+
+        @if (ShowTags && Item.Tags.Any())
+        {
+            <div class="mt-2">
+                @foreach (var tag in Item.Tags.Take(3))
+                {
+                    <span class="badge bg-light text-dark me-1" style="font-size: 0.7rem;">@tag</span>
+                }
+                @if (Item.Tags.Count > 3)
+                {
+                    <span class="badge bg-light text-dark" style="font-size: 0.7rem;">+@(Item.Tags.Count - 3)</span>
+                }
+            </div>
+        }
+    </div>
+</div>
+
+<style>
+    .library-item-card {
+        transition: all 0.2s ease;
+    }
+
+    .library-item-card:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    }
+
+    .library-item-card.border-primary {
+        border-width: 2px;
+    }
+</style>
+
+@code {
+    [Parameter, EditorRequired]
+    public MediaLibraryItem Item { get; set; } = null!;
+
+    [Parameter]
+    public bool IsSelected { get; set; }
+
+    [Parameter]
+    public bool ShowActions { get; set; } = true;
+
+    [Parameter]
+    public bool ShowDate { get; set; } = true;
+
+    [Parameter]
+    public bool ShowTags { get; set; } = false;
+
+    [Parameter]
+    public int MaxDescriptionLength { get; set; } = 80;
+
+    [Parameter]
+    public EventCallback<MediaLibraryItem> OnClick { get; set; }
+
+    [Parameter]
+    public EventCallback<MediaLibraryItem> OnEdit { get; set; }
+
+    [Parameter]
+    public EventCallback<MediaLibraryItem> OnDelete { get; set; }
+
+    private async Task HandleClick()
+    {
+        await OnClick.InvokeAsync(Item);
+    }
+}

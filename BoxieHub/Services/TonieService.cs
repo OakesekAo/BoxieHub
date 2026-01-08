@@ -2,6 +2,7 @@ using BoxieHub.Data;
 using BoxieHub.Models;
 using BoxieHub.Models.BoxieCloud;
 using BoxieHub.Services.BoxieCloud;
+using BoxieHub.Services.Storage;
 using BoxieHub.Client.Models.Enums;
 using Microsoft.EntityFrameworkCore;
 using System.Text.Json;
@@ -107,17 +108,23 @@ public class TonieService : ITonieService
     private readonly IBoxieCloudClient _boxieCloudClient;
     private readonly ICredentialEncryptionService _encryption;
     private readonly IDbContextFactory<ApplicationDbContext> _dbContextFactory;
+    private readonly IFileStorageService _fileStorageService;
+    private readonly IStoragePreferenceService _storagePreferenceService;
     private readonly ILogger<TonieService> _logger;
 
     public TonieService(
         IBoxieCloudClient boxieCloudClient,
         ICredentialEncryptionService encryption,
         IDbContextFactory<ApplicationDbContext> dbContextFactory,
+        IFileStorageService fileStorageService,
+        IStoragePreferenceService storagePreferenceService,
         ILogger<TonieService> logger)
     {
         _boxieCloudClient = boxieCloudClient;
         _encryption = encryption;
         _dbContextFactory = dbContextFactory;
+        _fileStorageService = fileStorageService;
+        _storagePreferenceService = storagePreferenceService;
         _logger = logger;
     }
 
@@ -131,6 +138,7 @@ public class TonieService : ITonieService
         // Get user's households from database
         var households = await dbContext.Households
             .Include(h => h.Characters.Where(c => c.Type == CharacterType.Creative))
+                .ThenInclude(c => c.CustomImage)
             .ToListAsync(ct);
 
         bool hasData = households.Any() && households.Any(h => h.Characters.Any());
@@ -193,6 +201,7 @@ public class TonieService : ITonieService
         if (!forceRefresh)
         {
             character = await dbContext.Characters
+                .Include(c => c.CustomImage)
                 .FirstOrDefaultAsync(c => 
                     c.ExternalCharacterId == tonieId && 
                     c.Type == CharacterType.Creative &&
@@ -221,6 +230,7 @@ public class TonieService : ITonieService
         if (character == null)
         {
             character = await dbContext.Characters
+                .Include(c => c.CustomImage)
                 .FirstOrDefaultAsync(c => c.ExternalCharacterId == tonieId, ct);
         }
 
@@ -229,6 +239,12 @@ public class TonieService : ITonieService
             UpdateCharacterFromDto(character, tonie);
             character.LastSyncedAt = DateTimeOffset.UtcNow;
             await dbContext.SaveChangesAsync(ct);
+            
+            // Override with custom image if available
+            if (!string.IsNullOrEmpty(character.DisplayImageUrl))
+            {
+                tonie.ImageUrl = character.DisplayImageUrl;
+            }
         }
 
         return tonie;
@@ -447,17 +463,12 @@ public class TonieService : ITonieService
                 return false;
             }
 
-            // Read image data
-            using var ms = new MemoryStream();
-            await imageStream.CopyToAsync(ms, ct);
-            var imageData = ms.ToArray();
-
             // Validate image size (max 5MB)
             const long maxSizeBytes = 5 * 1024 * 1024;
-            if (imageData.Length > maxSizeBytes)
+            if (imageStream.Length > maxSizeBytes)
             {
-                _logger.LogWarning("Image too large: {Size} bytes (max: {MaxSize})", imageData.Length, maxSizeBytes);
-                throw new InvalidOperationException($"Image size must be less than 5MB. Current size: {imageData.Length / (1024 * 1024.0):F2}MB");
+                _logger.LogWarning("Image too large: {Size} bytes (max: {MaxSize})", imageStream.Length, maxSizeBytes);
+                throw new InvalidOperationException($"Image size must be less than 5MB. Current size: {imageStream.Length / (1024 * 1024.0):F2}MB");
             }
 
             // Delete old custom image if exists
@@ -466,19 +477,77 @@ public class TonieService : ITonieService
                 var oldImage = await dbContext.FileUploads.FindAsync(new object[] { character.CustomImageId.Value }, ct);
                 if (oldImage != null)
                 {
+                    // Delete from external storage if applicable
+                    if (!string.IsNullOrEmpty(oldImage.StoragePath))
+                    {
+                        try
+                        {
+                            await _fileStorageService.DeleteFileAsync(
+                                oldImage.StoragePath,
+                                oldImage.UserStorageAccountId,
+                                ct);
+                            _logger.LogInformation("Deleted old image from {Provider}: {StoragePath}", 
+                                oldImage.Provider, oldImage.StoragePath);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning(ex, "Failed to delete old image from storage: {StoragePath}", 
+                                oldImage.StoragePath);
+                            // Continue with upload even if deletion fails
+                        }
+                    }
+                    
                     dbContext.FileUploads.Remove(oldImage);
                 }
             }
 
-            // Create new image upload
+            // Get user's default storage provider
+            var provider = await _storagePreferenceService.GetDefaultProviderAsync(userId, ct);
+            
+            string? storagePath = null;
+            byte[]? imageData = null;
+
+            // Handle storage based on provider
+            if (provider == StorageProvider.Database)
+            {
+                // Legacy: Store in database
+                _logger.LogInformation("Storing Tonie image '{FileName}' in database for user {UserId}", 
+                    fileName, userId);
+                
+                using var ms = new MemoryStream();
+                await imageStream.CopyToAsync(ms, ct);
+                imageData = ms.ToArray();
+            }
+            else
+            {
+                // Store in external storage (S3, Dropbox, GDrive)
+                _logger.LogInformation("Uploading Tonie image '{FileName}' to {Provider} for user {UserId}", 
+                    fileName, provider, userId);
+
+                storagePath = await _fileStorageService.UploadFileAsync(
+                    imageStream,
+                    fileName,
+                    contentType,
+                    userId,
+                    null, // No specific storage account for S3Railway
+                    ct);
+
+                _logger.LogInformation("Successfully uploaded Tonie image to {Provider}: {StoragePath}", 
+                    provider, storagePath);
+            }
+
+            // Create new image upload record
             var fileUpload = new FileUpload
             {
                 Id = Guid.NewGuid(),
-                Data = imageData,
+                Data = imageData, // NULL for external storage
                 ContentType = contentType,
                 FileName = fileName,
                 FileCategory = "Image",
-                FileSizeBytes = imageData.Length,
+                FileSizeBytes = imageStream.Length,
+                Provider = provider,
+                StoragePath = storagePath,
+                UserStorageAccountId = null, // S3Railway doesn't use storage accounts
                 Created = DateTimeOffset.UtcNow
             };
 
@@ -487,7 +556,11 @@ public class TonieService : ITonieService
 
             await dbContext.SaveChangesAsync(ct);
 
-            _logger.LogInformation("Successfully uploaded custom image for Tonie {TonieId}", tonieId);
+            // Update user's last used provider
+            await _storagePreferenceService.UpdateLastUsedAsync(userId, provider, null, ct);
+
+            _logger.LogInformation("Successfully uploaded custom image for Tonie {TonieId} (Provider: {Provider})", 
+                tonieId, provider);
             return true;
         }
         catch (Exception ex)
@@ -533,6 +606,26 @@ public class TonieService : ITonieService
             var image = await dbContext.FileUploads.FindAsync(new object[] { imageId }, ct);
             if (image != null)
             {
+                // Delete from external storage if applicable
+                if (!string.IsNullOrEmpty(image.StoragePath))
+                {
+                    try
+                    {
+                        await _fileStorageService.DeleteFileAsync(
+                            image.StoragePath,
+                            image.UserStorageAccountId,
+                            ct);
+                        _logger.LogInformation("Deleted Tonie image from {Provider}: {StoragePath}", 
+                            image.Provider, image.StoragePath);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to delete Tonie image from storage: {StoragePath}", 
+                            image.StoragePath);
+                        // Continue with database deletion even if storage deletion fails
+                    }
+                }
+                
                 dbContext.FileUploads.Remove(image);
             }
 
@@ -640,6 +733,7 @@ public class TonieService : ITonieService
             ct);
 
         var character = await dbContext.Characters
+            .Include(c => c.CustomImage)
             .FirstOrDefaultAsync(c => c.ExternalCharacterId == tonieId, ct);
 
         if (character != null)

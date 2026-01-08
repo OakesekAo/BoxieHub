@@ -4,6 +4,7 @@
 @using BoxieHub.Services
 @using System.Security.Claims
 @using Microsoft.AspNetCore.Authorization
+@using BoxieHub.Components.Pages.Tonies.Components
 @inject ITonieService TonieService
 @inject AuthenticationStateProvider AuthStateProvider
 @inject NavigationManager Navigation
@@ -45,87 +46,13 @@
         </nav>
 
         <!-- Tonie Header -->
-        <div class="card shadow mb-4">
-            <div class="card-body">
-                <div class="row align-items-center">
-                    <div class="col-md-2 text-center">
-                        <div class="position-relative">
-                            <img src="@tonie.ImageUrl" alt="@tonie.Name" class="img-fluid rounded" style="max-height: 150px;" />
-                            @if (!string.IsNullOrEmpty(tonie.ImageUrl) && tonie.ImageUrl.StartsWith("/uploads/"))
-                            {
-                                <span class="badge bg-primary position-absolute top-0 start-0 m-1" title="Custom image">
-                                    <i class="bi bi-star-fill"></i>
-                                </span>
-                            }
-                        </div>
-                        <button class="btn btn-sm btn-outline-secondary mt-2 w-100" @onclick="() => showImageUploadModal = true">
-                            <i class="bi bi-image"></i> Change Image
-                        </button>
-                    </div>
-                    <div class="col-md-7">
-                        <h2 class="mb-2">@tonie.Name</h2>
-                        <div class="mb-2">
-                            <span class="badge bg-primary me-2">
-                                <i class="bi bi-music-note"></i> @tonie.ChaptersPresent chapters
-                            </span>
-                            <span class="badge bg-info me-2">
-                                <i class="bi bi-clock"></i> @FormatDuration(tonie.SecondsPresent)
-                            </span>
-                            @if (tonie.Transcoding)
-                            {
-                                <span class="badge bg-warning">
-                                    <span class="spinner-border spinner-border-sm me-1"></span> Processing...
-                                </span>
-                            }
-                            else if (tonie.Live)
-                            {
-                                <span class="badge bg-success">
-                                    <i class="bi bi-check-circle-fill"></i> Live
-                                </span>
-                            }
-                        </div>
-                        
-                        <!-- Storage Progress Bar -->
-                        <div class="mt-3">
-                            <div class="d-flex justify-content-between mb-1">
-                                <small class="text-muted">Storage Used</small>
-                                <small class="text-muted">@GetStoragePercentage(tonie)% (@FormatDuration(tonie.SecondsPresent) / @FormatDuration(tonie.SecondsPresent + tonie.SecondsRemaining))</small>
-                            </div>
-                            <div class="progress" style="height: 20px;">
-                                <div class="progress-bar @GetStorageColorClass(tonie)" 
-                                     role="progressbar" 
-                                     style="width: @GetStoragePercentage(tonie)%" 
-                                     aria-valuenow="@GetStoragePercentage(tonie)" 
-                                     aria-valuemin="0" 
-                                     aria-valuemax="100">
-                                    @GetStoragePercentage(tonie)%
-                                </div>
-                            </div>
-                            <small class="text-muted">
-                                <i class="bi bi-info-circle"></i> @FormatDuration(tonie.SecondsRemaining) available
-                            </small>
-                        </div>
-                    </div>
-                    <div class="col-md-3 text-end">
-                        <button class="btn btn-outline-secondary mb-2 w-100" @onclick="RefreshTonie" disabled="@isRefreshing">
-                            @if (isRefreshing)
-                            {
-                                <span class="spinner-border spinner-border-sm me-2"></span>
-                                <span>Refreshing...</span>
-                            }
-                            else
-                            {
-                                <i class="bi bi-arrow-clockwise"></i>
-                                <span>Refresh</span>
-                            }
-                        </button>
-                        <a href="/tonies/@HouseholdId/@TonieId/upload" class="btn btn-primary w-100">
-                            <i class="bi bi-upload"></i> Upload Audio
-                        </a>
-                    </div>
-                </div>
-            </div>
-        </div>
+        <TonieHeader @key="tonieHeaderKey"
+                     Tonie="@tonie" 
+                     HouseholdId="@HouseholdId" 
+                     TonieId="@TonieId"
+                     IsRefreshing="@isRefreshing"
+                     OnRefresh="@RefreshTonie"
+                     OnChangeImage="@(() => showImageUploadModal = true)" />
 
         <!-- Chapters Section -->
         <div class="card shadow">
@@ -446,10 +373,14 @@
                         @if (tonie?.ImageUrl?.StartsWith("/uploads/") == true)
                         {
                             <div class="alert alert-warning">
-                                <i class="bi bi-star-fill"></i> <strong>Current:</strong> Custom image is set
-                                <button class="btn btn-sm btn-outline-danger float-end" @onclick="DeleteCustomImage">
-                                    <i class="bi bi-trash"></i> Revert to Default
-                                </button>
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <i class="bi bi-star-fill"></i> <strong>Current:</strong> Custom image is set
+                                    </div>
+                                    <button class="btn btn-sm btn-outline-danger" @onclick="DeleteCustomImage">
+                                        <i class="bi bi-trash"></i> Revert to Default
+                                    </button>
+                                </div>
                             </div>
                         }
                     }
@@ -521,6 +452,9 @@
     private long selectedImageSize = 0;
     private string? imageUploadError;
     private bool isUploadingImage = false;
+    
+    // Component refresh key - change to force re-render
+    private Guid tonieHeaderKey = Guid.NewGuid();
 
     protected override async Task OnInitializedAsync()
     {
@@ -604,6 +538,20 @@
                 tonie = await TonieService.GetCreativeTonieDetailsAsync(userId, HouseholdId, TonieId, forceRefresh: true);
                 ShowSuccess("Tonie refreshed successfully");
                 Logger.LogInformation("Force refreshed Tonie {TonieId} from API", TonieId);
+                
+                // Update original chapters after refresh
+                originalChapters = tonie.Chapters?.Select(c => new ChapterDto
+                {
+                    Id = c.Id,
+                    Title = c.Title,
+                    Seconds = c.Seconds,
+                    File = c.File,
+                    Transcoding = c.Transcoding
+                }).ToList();
+                hasUnsavedChanges = false;
+                
+                // Force state update
+                StateHasChanged();
                 
                 // Re-initialize drag & drop
                 await Task.Delay(100);
@@ -724,18 +672,17 @@
         return $"{timeSpan.Minutes}m {timeSpan.Seconds}s";
     }
 
-    private int GetStoragePercentage(CreativeTonieDto tonie)
+    private string FormatFileSize(long bytes)
     {
-        var total = tonie.SecondsPresent + tonie.SecondsRemaining;
-        return total > 0 ? (int)((tonie.SecondsPresent / total) * 100) : 0;
-    }
-
-    private string GetStorageColorClass(CreativeTonieDto tonie)
-    {
-        var percentage = GetStoragePercentage(tonie);
-        if (percentage >= 90) return "bg-danger";
-        if (percentage >= 70) return "bg-warning";
-        return "bg-success";
+        string[] sizes = { "B", "KB", "MB", "GB" };
+        double len = bytes;
+        int order = 0;
+        while (len >= 1024 && order < sizes.Length - 1)
+        {
+            order++;
+            len = len / 1024;
+        }
+        return $"{len:0.##} {sizes[order]}";
     }
     
     // Image upload methods
@@ -808,16 +755,19 @@
 
             if (success)
             {
-                ShowSuccess("Custom image uploaded successfully!");
-                
-                // Reload Tonie details to show new image
-                await LoadTonieDetails();
-                
-                // Close modal and reset
+                // Close modal and reset first
                 showImageUploadModal = false;
                 selectedImage = null;
                 selectedImageName = string.Empty;
                 selectedImageSize = 0;
+                
+                // Force refresh from API to update cache with new image
+                await RefreshTonie();
+                
+                // Generate new key to force TonieHeader component re-render with fresh image
+                tonieHeaderKey = Guid.NewGuid();
+                
+                ShowSuccess("Custom image uploaded successfully!");
             }
             else
             {
@@ -865,6 +815,9 @@
                 // Reload Tonie details
                 await LoadTonieDetails();
                 
+                // Generate new key to force TonieHeader component re-render
+                tonieHeaderKey = Guid.NewGuid();
+                
                 // Close modal
                 showImageUploadModal = false;
             }
@@ -882,19 +835,6 @@
         {
             isUploadingImage = false;
         }
-    }
-
-    private string FormatFileSize(long bytes)
-    {
-        string[] sizes = { "B", "KB", "MB", "GB" };
-        double len = bytes;
-        int order = 0;
-        while (len >= 1024 && order < sizes.Length - 1)
-        {
-            order++;
-            len = len / 1024;
-        }
-        return $"{len:0.##} {sizes[order]}";
     }
     
     // Edit chapter methods

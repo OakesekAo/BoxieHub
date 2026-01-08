@@ -4,6 +4,7 @@ using BoxieHub.Models;
 using BoxieHub.Models.BoxieCloud;
 using BoxieHub.Services;
 using BoxieHub.Services.BoxieCloud;
+using BoxieHub.Services.Storage;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -19,6 +20,8 @@ public class TonieServiceCascadeDeleteTests : IDisposable
     private readonly Mock<IDbContextFactory<ApplicationDbContext>> _mockDbContextFactory;
     private readonly ApplicationDbContext _dbContext;
     private readonly DbContextOptions<ApplicationDbContext> _dbOptions;
+    private readonly Mock<IFileStorageService> _mockFileStorage;
+    private readonly Mock<IStoragePreferenceService> _mockStoragePreference;
     private readonly Mock<ILogger<TonieService>> _mockLogger;
     private readonly TonieService _service;
     private readonly string _testUserId = "test-user-123";
@@ -35,6 +38,8 @@ public class TonieServiceCascadeDeleteTests : IDisposable
         // Setup mocks
         _mockBoxieClient = new Mock<IBoxieCloudClient>();
         _mockEncryption = new Mock<ICredentialEncryptionService>();
+        _mockFileStorage = new Mock<IFileStorageService>();
+        _mockStoragePreference = new Mock<IStoragePreferenceService>();
         _mockLogger = new Mock<ILogger<TonieService>>();
 
         // Mock IDbContextFactory to create NEW contexts each time (to avoid disposal issues)
@@ -47,6 +52,8 @@ public class TonieServiceCascadeDeleteTests : IDisposable
             _mockBoxieClient.Object,
             _mockEncryption.Object,
             _mockDbContextFactory.Object,
+            _mockFileStorage.Object,
+            _mockStoragePreference.Object,
             _mockLogger.Object);
     }
 

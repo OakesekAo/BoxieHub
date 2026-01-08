@@ -19,6 +19,8 @@ namespace BoxieHub.Data
     public DbSet<AudioUploadHistory> AudioUploadHistories { get; set; }
     public DbSet<MediaLibraryItem> MediaLibraryItems { get; set; }
     public DbSet<MediaLibraryUsage> MediaLibraryUsages { get; set; }
+    public DbSet<UserStorageAccount> UserStorageAccounts { get; set; }
+    public DbSet<UserStoragePreference> UserStoragePreferences { get; set; }
 
     protected override void OnModelCreating(ModelBuilder builder)
         {
@@ -82,6 +84,29 @@ namespace BoxieHub.Data
             builder.Entity<FileUpload>()
                 .HasIndex(f => f.Created)
                 .HasDatabaseName("IX_FileUploads_Created");
+            
+            builder.Entity<FileUpload>()
+                .HasIndex(f => f.Provider)
+                .HasDatabaseName("IX_FileUploads_Provider");
+            
+            // UserStorageAccount indexes
+            builder.Entity<UserStorageAccount>()
+                .HasIndex(u => u.UserId)
+                .HasDatabaseName("IX_UserStorageAccounts_UserId");
+            
+            builder.Entity<UserStorageAccount>()
+                .HasIndex(u => new { u.UserId, u.Provider })
+                .HasDatabaseName("IX_UserStorageAccounts_UserId_Provider");
+            
+            builder.Entity<UserStorageAccount>()
+                .HasIndex(u => u.IsActive)
+                .HasDatabaseName("IX_UserStorageAccounts_IsActive");
+            
+            // UserStoragePreference unique constraint
+            builder.Entity<UserStoragePreference>()
+                .HasIndex(u => u.UserId)
+                .IsUnique()
+                .HasDatabaseName("IX_UserStoragePreferences_UserId");
         }
     }
 }
