@@ -21,6 +21,7 @@ namespace BoxieHub.Data
     public DbSet<MediaLibraryUsage> MediaLibraryUsages { get; set; }
     public DbSet<UserStorageAccount> UserStorageAccounts { get; set; }
     public DbSet<UserStoragePreference> UserStoragePreferences { get; set; }
+    public DbSet<ImportJob> ImportJobs { get; set; }
 
     protected override void OnModelCreating(ModelBuilder builder)
         {
@@ -107,6 +108,25 @@ namespace BoxieHub.Data
                 .HasIndex(u => u.UserId)
                 .IsUnique()
                 .HasDatabaseName("IX_UserStoragePreferences_UserId");
+            
+            // ImportJob indexes
+            builder.Entity<ImportJob>()
+                .HasIndex(i => i.UserId)
+                .HasDatabaseName("IX_ImportJobs_UserId");
+            
+            builder.Entity<ImportJob>()
+                .HasIndex(i => i.Status)
+                .HasDatabaseName("IX_ImportJobs_Status");
+            
+            builder.Entity<ImportJob>()
+                .HasIndex(i => i.Created)
+                .HasDatabaseName("IX_ImportJobs_Created");
+            
+            builder.Entity<ImportJob>()
+                .HasOne(i => i.MediaLibraryItem)
+                .WithMany()
+                .HasForeignKey(i => i.MediaLibraryItemId)
+                .OnDelete(DeleteBehavior.SetNull);
         }
     }
 }

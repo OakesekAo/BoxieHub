@@ -1,0 +1,389 @@
+@page "/library/import/youtube/playlist"
+@rendermode InteractiveServer
+@using BoxieHub.Services.Import
+@using BoxieHub.Models
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Authorization
+@inject IImportJobService ImportJobService
+@inject IYouTubeImportService YouTubeService
+@inject ImportJobProcessor JobProcessor
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Navigation
+@inject ILogger<ImportPlaylist> Logger
+@attribute [Authorize]
+@implements IDisposable
+
+<PageTitle>Import YouTube Playlist - BoxieHub</PageTitle>
+
+<div class="container mt-4">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="/library">Library</a></li>
+            <li class="breadcrumb-item"><a href="/library/import/youtube">Import from YouTube</a></li>
+            <li class="breadcrumb-item active">Playlist</li>
+        </ol>
+    </nav>
+
+    <div class="card shadow-sm">
+        <div class="card-header bg-danger text-white">
+            <h4 class="mb-0">
+                <i class="bi bi-youtube"></i> <i class="bi bi-collection-play"></i> Import YouTube Playlist
+            </h4>
+        </div>
+        <div class="card-body">
+            <div class="mb-3">
+                <label class="form-label">YouTube Playlist URL *</label>
+                <input type="text" 
+                       class="form-control @(validationError != null ? "is-invalid" : "")" 
+                       @bind="playlistUrl"
+                       @oninput="OnUrlChanged"
+                       placeholder="https://www.youtube.com/playlist?list=..."
+                       disabled="@isProcessing" />
+                @if (validationError != null)
+                {
+                    <div class="invalid-feedback d-block">
+                        @validationError
+                    </div>
+                }
+                <small class="text-muted">
+                    Paste a YouTube playlist URL (max 50 videos)
+                </small>
+            </div>
+
+            @if (isLoadingPreview)
+            {
+                <div class="text-center py-4">
+                    <div class="spinner-border text-primary"></div>
+                    <p class="mt-2 text-muted">Loading playlist...</p>
+                </div>
+            }
+            else if (playlistInfo != null && playlistInfo.IsValid)
+            {
+                <!-- Playlist Preview -->
+                <div class="card mb-3 border-primary">
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-8">
+                                <h5 class="card-title">@playlistInfo.Title</h5>
+                                <p class="card-text small text-muted mb-2">
+                                    <i class="bi bi-person"></i> @playlistInfo.Author
+                                </p>
+                                <p class="card-text small mb-2">
+                                    <i class="bi bi-collection-play"></i> @playlistInfo.VideoCount videos
+                                </p>
+                                <p class="card-text small text-muted">
+                                    <i class="bi bi-clock"></i> Total duration: @FormatTotalDuration()
+                                </p>
+                            </div>
+                            <div class="col-md-4 text-end">
+                                <img src="@playlistInfo.ThumbnailUrl" 
+                                     class="img-thumbnail" 
+                                     alt="Playlist thumbnail"
+                                     style="max-width: 160px;">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Video Selection Controls -->
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h6 class="mb-0">
+                        Select Videos to Import 
+                        <span class="badge bg-primary">@GetSelectedCount() selected</span>
+                    </h6>
+                    <div class="btn-group btn-group-sm">
+                        <button class="btn btn-outline-secondary" @onclick="SelectAll" disabled="@isProcessing">
+                            <i class="bi bi-check-square"></i> Select All
+                        </button>
+                        <button class="btn btn-outline-secondary" @onclick="DeselectAll" disabled="@isProcessing">
+                            <i class="bi bi-square"></i> Deselect All
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Video List -->
+                <div class="list-group mb-3" style="max-height: 500px; overflow-y: auto;">
+                    @foreach (var (video, index) in playlistInfo.Videos.Select((v, i) => (v, i)))
+                    {
+                        <div class="list-group-item @(video.IsValid ? "" : "list-group-item-secondary")" 
+                             style="@(selectedVideos.ContainsKey(index) && selectedVideos[index] ? "background-color: #f0f8ff;" : "")">
+                            <div class="d-flex align-items-start">
+                                <div class="form-check me-3">
+                                    <input type="checkbox" 
+                                           class="form-check-input" 
+                                           id="video-@index"
+                                           @bind="selectedVideos[index]"
+                                           disabled="@(!video.IsValid || isProcessing)" 
+                                           style="width: 20px; height: 20px; cursor: pointer;" />
+                                </div>
+                                <label class="flex-grow-1" for="video-@index" style="cursor: pointer;">
+                                    <div class="row">
+                                        <div class="col-auto">
+                                            <img src="@video.ThumbnailUrl" 
+                                                 class="rounded" 
+                                                 alt="Thumbnail"
+                                                 style="width: 120px; height: 90px; object-fit: cover;">
+                                        </div>
+                                        <div class="col">
+                                            <h6 class="mb-1">
+                                                <span class="badge bg-secondary me-2">@((index + 1).ToString())</span>
+                                                @video.Title
+                                            </h6>
+                                            <small class="text-muted d-block">
+                                                <i class="bi bi-clock"></i> @FormatDuration(video.Duration)
+                                                <span class="ms-2"><i class="bi bi-person"></i> @video.Author</span>
+                                            </small>
+                                            @if (!video.IsValid)
+                                            {
+                                                <small class="text-danger d-block mt-1">
+                                                    <i class="bi bi-exclamation-triangle"></i> @video.ErrorMessage
+                                                </small>
+                                            }
+                                        </div>
+                                    </div>
+                                </label>
+                            </div>
+                        </div>
+                    }
+                </div>
+
+                <!-- Import Summary -->
+                <div class="alert alert-info">
+                    <div class="row align-items-center">
+                        <div class="col-md-8">
+                            <i class="bi bi-info-circle"></i>
+                            <strong>@GetSelectedCount() videos selected</strong> 
+                            • @FormatSelectedDuration() total duration
+                            • ~@GetEstimatedFileSize() estimated size
+                        </div>
+                        <div class="col-md-4 text-end">
+                            <button class="btn btn-primary btn-lg" 
+                                    @onclick="StartBatchImport" 
+                                    disabled="@(isProcessing || GetSelectedCount() == 0)">
+                                @if (isProcessing)
+                                {
+                                    <span class="spinner-border spinner-border-sm me-2"></span>
+                                    <span>Starting imports...</span>
+                                }
+                                else
+                                {
+                                    <i class="bi bi-download"></i>
+                                    <span>Import @GetSelectedCount() Videos</span>
+                                }
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    private string playlistUrl = string.Empty;
+    private YouTubePlaylistInfo? playlistInfo;
+    private Dictionary<int, bool> selectedVideos = new();
+    private string? validationError;
+    private bool isLoadingPreview;
+    private bool isProcessing;
+    private System.Threading.Timer? debounceTimer;
+
+    private void OnUrlChanged(ChangeEventArgs e)
+    {
+        playlistUrl = e.Value?.ToString() ?? string.Empty;
+        validationError = null;
+        playlistInfo = null;
+        selectedVideos.Clear();
+        
+        // Debounce preview loading
+        debounceTimer?.Dispose();
+        debounceTimer = new System.Threading.Timer(async _ =>
+        {
+            await InvokeAsync(async () =>
+            {
+                await LoadPlaylistPreview();
+                StateHasChanged();
+            });
+        }, null, TimeSpan.FromMilliseconds(800), Timeout.InfiniteTimeSpan);
+    }
+
+    private async Task LoadPlaylistPreview()
+    {
+        if (string.IsNullOrWhiteSpace(playlistUrl))
+        {
+            playlistInfo = null;
+            return;
+        }
+        
+        // Check if it's a playlist URL
+        if (!await YouTubeService.IsPlaylistUrlAsync(playlistUrl))
+        {
+            validationError = "This doesn't appear to be a playlist URL. For single videos, use the regular import page.";
+            return;
+        }
+        
+        isLoadingPreview = true;
+        validationError = null;
+        
+        try
+        {
+            playlistInfo = await YouTubeService.GetPlaylistInfoAsync(playlistUrl);
+            
+            if (!playlistInfo.IsValid)
+            {
+                validationError = playlistInfo.ErrorMessage;
+                playlistInfo = null;
+            }
+            else
+            {
+                // Initialize selection (all valid videos selected by default)
+                selectedVideos = playlistInfo.Videos
+                    .Select((v, i) => new { Index = i, IsValid = v.IsValid })
+                    .ToDictionary(x => x.Index, x => x.IsValid);
+                
+                Logger.LogInformation("Loaded playlist with {Count} videos ({Valid} valid)", 
+                    playlistInfo.VideoCount, selectedVideos.Count(x => x.Value));
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to load playlist preview");
+            validationError = "Failed to load playlist. Please check the URL.";
+            playlistInfo = null;
+        }
+        finally
+        {
+            isLoadingPreview = false;
+        }
+    }
+
+    private void SelectAll()
+    {
+        if (playlistInfo == null) return;
+        
+        for (int i = 0; i < playlistInfo.Videos.Count; i++)
+        {
+            if (playlistInfo.Videos[i].IsValid)
+            {
+                selectedVideos[i] = true;
+            }
+        }
+    }
+
+    private void DeselectAll()
+    {
+        foreach (var key in selectedVideos.Keys.ToList())
+        {
+            selectedVideos[key] = false;
+        }
+    }
+
+    private int GetSelectedCount()
+    {
+        return selectedVideos.Count(x => x.Value);
+    }
+
+    private TimeSpan GetSelectedDuration()
+    {
+        if (playlistInfo == null) return TimeSpan.Zero;
+        
+        var selected = playlistInfo.Videos
+            .Where((v, i) => selectedVideos.ContainsKey(i) && selectedVideos[i])
+            .Sum(v => v.Duration.TotalSeconds);
+        
+        return TimeSpan.FromSeconds(selected);
+    }
+
+    private string FormatSelectedDuration()
+    {
+        return FormatDuration(GetSelectedDuration());
+    }
+
+    private string FormatTotalDuration()
+    {
+        if (playlistInfo == null) return "0m";
+        
+        var total = TimeSpan.FromSeconds(
+            playlistInfo.Videos.Sum(v => v.Duration.TotalSeconds));
+        
+        return FormatDuration(total);
+    }
+
+    private string FormatDuration(TimeSpan duration)
+    {
+        if (duration.TotalHours >= 1)
+            return $"{(int)duration.TotalHours}h {duration.Minutes}m";
+        if (duration.TotalMinutes >= 1)
+            return $"{duration.Minutes}m {duration.Seconds}s";
+        return $"{duration.Seconds}s";
+    }
+
+    private string GetEstimatedFileSize()
+    {
+        if (playlistInfo == null) return "0 MB";
+        
+        // Estimate ~1 MB per minute of audio (50 kbps M4A)
+        var durationMinutes = GetSelectedDuration().TotalMinutes;
+        var estimatedMB = (int)(durationMinutes * 0.4); // 0.4 MB per minute for low-bitrate audio
+        
+        if (estimatedMB < 1) return "< 1 MB";
+        if (estimatedMB > 1000) return $"{estimatedMB / 1024.0:F1} GB";
+        return $"{estimatedMB} MB";
+    }
+
+    private async Task StartBatchImport()
+    {
+        if (playlistInfo == null || GetSelectedCount() == 0)
+            return;
+
+        isProcessing = true;
+        
+        try
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var userId = authState.User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+            if (string.IsNullOrEmpty(userId))
+            {
+                validationError = "User not authenticated";
+                return;
+            }
+
+            // Get selected video URLs
+            var selectedUrls = playlistInfo.Videos
+                .Where((v, i) => selectedVideos.ContainsKey(i) && selectedVideos[i])
+                .Select(v => $"https://www.youtube.com/watch?v={v.Id}")
+                .ToList();
+
+            Logger.LogInformation("Starting batch import of {Count} videos from playlist", selectedUrls.Count);
+
+            // Create batch import jobs
+            var jobs = await ImportJobService.CreateYouTubeBatchImportAsync(userId, selectedUrls);
+
+            // Enqueue all jobs for background processing
+            foreach (var job in jobs)
+            {
+                await JobProcessor.EnqueueJobAsync(job.Id);
+            }
+
+            Logger.LogInformation("Successfully started batch import of {Count} videos", jobs.Count);
+
+            // Redirect to import page to see progress
+            Navigation.NavigateTo("/library/import/youtube");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to start batch import");
+            validationError = $"Failed to start import: {ex.Message}";
+        }
+        finally
+        {
+            isProcessing = false;
+        }
+    }
+
+    public void Dispose()
+    {
+        debounceTimer?.Dispose();
+    }
+}

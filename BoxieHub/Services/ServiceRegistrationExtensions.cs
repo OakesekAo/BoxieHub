@@ -3,6 +3,7 @@ using Amazon.Runtime;
 using BoxieHub.Services.BoxieCloud;
 using BoxieHub.Services.Storage;
 using BoxieHub.Services.Sync;
+using BoxieHub.Services.Import;
 
 namespace BoxieHub.Services;
 
@@ -48,6 +49,9 @@ public static class ServiceRegistrationExtensions
         
         // Register file storage services
         services.AddFileStorageServices(configuration);
+        
+        // Register YouTube import services
+        services.AddImportServices();
 
         return services;
     }
@@ -105,9 +109,33 @@ public static class ServiceRegistrationExtensions
             return sp.GetRequiredService<DatabaseFileStorageService>();
         });
         
+        
+        return services;
+    }
+    
+    /// <summary>
+    /// Registers import services (YouTube, background processor)
+    /// </summary>
+    private static IServiceCollection AddImportServices(this IServiceCollection services)
+    {
+        // Register YouTube import service
+        services.AddScoped<IYouTubeImportService, YouTubeImportService>();
+        
+        // Register import job service
+        services.AddScoped<IImportJobService, ImportJobService>();
+        
+        // Register background job processor as singleton (runs once per app lifetime)
+        services.AddSingleton<ImportJobProcessor>();
+        services.AddHostedService(sp => sp.GetRequiredService<ImportJobProcessor>());
+        
         return services;
     }
 }
+
+
+
+
+
 
 
 
