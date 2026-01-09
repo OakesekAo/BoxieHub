@@ -109,6 +109,11 @@ public static class ServiceRegistrationExtensions
             return sp.GetRequiredService<DatabaseFileStorageService>();
         });
         
+        // Register storage migration tool (admin only)
+        if (!string.IsNullOrEmpty(accessKey) && !string.IsNullOrEmpty(secretKey))
+        {
+            services.AddScoped<IDatabaseToS3Migrator, DatabaseToS3Migrator>();
+        }
         
         return services;
     }
