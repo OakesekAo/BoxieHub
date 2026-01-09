@@ -1,0 +1,406 @@
+@rendermode InteractiveServer
+@page "/library/upload"
+@using BoxieHub.Models
+@using BoxieHub.Services
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Forms
+@using System.ComponentModel.DataAnnotations
+@attribute [Authorize]
+@inject IMediaLibraryService MediaLibraryService
+@inject NavigationManager Navigation
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject IJSRuntime JS
+
+<PageTitle>Add to Library - BoxieHub</PageTitle>
+
+<div class="container mt-4">
+    <div class="mb-4">
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="/library">Library</a></li>
+                <li class="breadcrumb-item active" aria-current="page">Upload</li>
+            </ol>
+        </nav>
+        <h2><i class="bi bi-upload"></i> Add Audio to Library</h2>
+        <p class="text-muted">Upload an audio file to your library for reuse across multiple Tonies</p>
+    </div>
+
+    @if (!string.IsNullOrEmpty(errorMessage))
+    {
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            <i class="bi bi-exclamation-triangle"></i> @errorMessage
+            <button type="button" class="btn-close" @onclick="() => errorMessage = null"></button>
+        </div>
+    }
+
+    @if (!string.IsNullOrEmpty(successMessage))
+    {
+        <div class="alert alert-success alert-dismissible fade show" role="alert">
+            <i class="bi bi-check-circle"></i> @successMessage
+            <button type="button" class="btn-close" @onclick="() => successMessage = null"></button>
+        </div>
+    }
+
+    <div class="card">
+        <div class="card-body">
+            <EditForm Model="@uploadModel" OnValidSubmit="HandleUpload">
+                <DataAnnotationsValidator />
+
+                <!-- File Selection -->
+                <div class="mb-4">
+                    <label class="form-label fw-bold">Audio File *</label>
+                    <InputFile OnChange="HandleFileSelected" 
+                               accept=".mp3,.m4a,.ogg,.wav,.flac" 
+                               class="form-control"
+                               disabled="@isUploading" />
+                    <div class="form-text">
+                        Supported formats: MP3, M4A, OGG, WAV, FLAC (Max 200MB)
+                    </div>
+                    @if (selectedFile != null)
+                    {
+                        <div class="alert alert-info mt-2">
+                            <h6><i class="bi bi-file-earmark-music"></i> Selected File</h6>
+                            <p class="mb-1"><strong>Name:</strong> @selectedFile.Name</p>
+                            <p class="mb-1"><strong>Size:</strong> @FormatFileSize(selectedFile.Size)</p>
+                            @if (isCalculatingDuration)
+                            {
+                                <p class="mb-0">
+                                    <span class="spinner-border spinner-border-sm me-2"></span>
+                                    <strong>Calculating duration...</strong>
+                                </p>
+                            }
+                            else if (audioDurationSeconds > 0)
+                            {
+                                <p class="mb-0">
+                                    <strong>Duration:</strong> @FormatDuration((float)audioDurationSeconds)
+                                </p>
+                            }
+                        </div>
+                    }
+                </div>
+
+                <!-- Title -->
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Title *</label>
+                    <InputText @bind-Value="uploadModel.Title" 
+                               class="form-control" 
+                               placeholder="e.g., Bedtime Story - Chapter 1"
+                               disabled="@isUploading" />
+                    <ValidationMessage For="@(() => uploadModel.Title)" />
+                </div>
+
+                <!-- Description -->
+                <div class="mb-3">
+                    <label class="form-label">Description</label>
+                    <InputTextArea @bind-Value="uploadModel.Description" 
+                                   class="form-control" 
+                                   rows="3"
+                                   placeholder="Optional: Add a description to help you find this audio later"
+                                   disabled="@isUploading" />
+                </div>
+
+                <!-- Category -->
+                <div class="mb-3">
+                    <label class="form-label">Category</label>
+                    <InputSelect @bind-Value="uploadModel.Category" class="form-select" disabled="@isUploading">
+                        <option value="">-- Select Category --</option>
+                        <option value="Music">Music</option>
+                        <option value="Story">Story</option>
+                        <option value="Educational">Educational</option>
+                        <option value="Podcast">Podcast</option>
+                        <option value="Other">Other</option>
+                    </InputSelect>
+                </div>
+
+                <!-- Tags -->
+                <div class="mb-4">
+                    <label class="form-label">Tags</label>
+                    <input type="text" 
+                           @bind="tagsInput" 
+                           @bind:event="oninput"
+                           class="form-control" 
+                           placeholder="e.g., children, bedtime, soothing (comma separated)"
+                           disabled="@isUploading" />
+                    <div class="form-text">Separate tags with commas</div>
+                    
+                    @if (uploadModel.Tags.Any())
+                    {
+                        <div class="mt-2">
+                            @foreach (var tag in uploadModel.Tags)
+                            {
+                                <span class="badge bg-secondary me-1">
+                                    @tag
+                                    <button type="button" class="btn-close btn-close-white ms-1" 
+                                            style="font-size: 0.6rem;"
+                                            @onclick="() => RemoveTag(tag)"
+                                            disabled="@isUploading"></button>
+                                </span>
+                            }
+                        </div>
+                    }
+                </div>
+
+                <!-- Upload Progress -->
+                @if (isUploading)
+                {
+                    <div class="mb-3">
+                        <div class="d-flex align-items-center">
+                            <div class="spinner-border spinner-border-sm text-primary me-2" role="status">
+                                <span class="visually-hidden">Uploading...</span>
+                            </div>
+                            <span>@uploadProgress</span>
+                        </div>
+                    </div>
+                }
+
+                <!-- Action Buttons -->
+                <div class="d-flex gap-2">
+                    <button type="submit" 
+                            class="btn btn-primary" 
+                            disabled="@(isUploading || selectedFile == null || string.IsNullOrWhiteSpace(uploadModel.Title))">
+                        @if (isUploading)
+                        {
+                            <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+                            <span>Uploading...</span>
+                        }
+                        else
+                        {
+                            <i class="bi bi-upload"></i>
+                            <span>Add to Library</span>
+                        }
+                    </button>
+                    <a href="/library" class="btn btn-outline-secondary">
+                        Cancel
+                    </a>
+                </div>
+            </EditForm>
+        </div>
+    </div>
+
+    <div class="mt-3">
+        <div class="card bg-light">
+            <div class="card-body">
+                <h6><i class="bi bi-info-circle"></i> Tips</h6>
+                <ul class="mb-0 small">
+                    <li>Use descriptive titles to easily find your files later</li>
+                    <li>Add tags to help organize and search your library</li>
+                    <li>Once uploaded, you can reuse this file on multiple Tonies</li>
+                    <li>Files are stored securely and can be previewed before uploading to a Tonie</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private UploadModel uploadModel = new();
+    private IBrowserFile? selectedFile;
+    private string tagsInput = "";
+    
+    private bool isUploading = false;
+    private string? errorMessage;
+    private string? successMessage;
+    private string uploadProgress = "Preparing upload...";
+    
+    // Audio duration detection
+    private double audioDurationSeconds = 0;
+    private bool isCalculatingDuration = false;
+
+    private class UploadModel
+    {
+        [Required(ErrorMessage = "Title is required")]
+        [StringLength(200, ErrorMessage = "Title must be 200 characters or less")]
+        public string Title { get; set; } = string.Empty;
+
+        [StringLength(1000, ErrorMessage = "Description must be 1000 characters or less")]
+        public string? Description { get; set; }
+
+        [StringLength(50)]
+        public string? Category { get; set; }
+
+        public List<string> Tags { get; set; } = new();
+    }
+
+    private async Task HandleFileSelected(InputFileChangeEventArgs e)
+    {
+        selectedFile = e.File;
+        errorMessage = null;
+        audioDurationSeconds = 0;
+
+        if (selectedFile == null) return;
+
+        // Auto-populate title from filename if empty
+        if (string.IsNullOrEmpty(uploadModel.Title))
+        {
+            uploadModel.Title = Path.GetFileNameWithoutExtension(selectedFile.Name);
+        }
+
+        // Validate file size
+        const long maxSizeBytes = 200 * 1024 * 1024; // 200MB
+        if (selectedFile.Size > maxSizeBytes)
+        {
+            errorMessage = "File is too large. Maximum size is 200MB.";
+            selectedFile = null;
+            StateHasChanged();
+            return;
+        }
+        
+        // Validate file extension
+        var extension = Path.GetExtension(selectedFile.Name).ToLowerInvariant();
+        var allowedExtensions = new[] { ".mp3", ".m4a", ".ogg", ".wav", ".flac" };
+        
+        if (!allowedExtensions.Contains(extension))
+        {
+            errorMessage = "Invalid file format. Please upload MP3, M4A, OGG, WAV, or FLAC files.";
+            selectedFile = null;
+            StateHasChanged();
+            return;
+        }
+
+        // Calculate audio duration using JavaScript
+        try
+        {
+            isCalculatingDuration = true;
+            StateHasChanged();
+
+            // Read file into memory for JavaScript processing
+            const int maxAllowedSize = 200 * 1024 * 1024;
+            using var stream = selectedFile.OpenReadStream(maxAllowedSize);
+            using var ms = new MemoryStream();
+            await stream.CopyToAsync(ms);
+            var fileBytes = ms.ToArray();
+            
+            // Use JavaScript to detect audio duration
+            audioDurationSeconds = await JS.InvokeAsync<double>("getAudioDuration", 
+                fileBytes, 
+                selectedFile.ContentType);
+        }
+        catch (Exception ex)
+        {
+            // Don't block upload if duration detection fails
+            audioDurationSeconds = 0;
+            // You could log this but don't show error to user
+        }
+        finally
+        {
+            isCalculatingDuration = false;
+        }
+        
+        StateHasChanged();
+    }
+
+    protected override void OnParametersSet()
+    {
+        // Parse tags from input
+        if (!string.IsNullOrWhiteSpace(tagsInput))
+        {
+            uploadModel.Tags = tagsInput
+                .Split(',')
+                .Select(t => t.Trim())
+                .Where(t => !string.IsNullOrEmpty(t))
+                .Distinct()
+                .ToList();
+        }
+    }
+
+    private void RemoveTag(string tag)
+    {
+        uploadModel.Tags.Remove(tag);
+        tagsInput = string.Join(", ", uploadModel.Tags);
+    }
+
+    private async Task HandleUpload()
+    {
+        if (selectedFile == null)
+        {
+            errorMessage = "Please select a file to upload";
+            return;
+        }
+
+        isUploading = true;
+        errorMessage = null;
+        successMessage = null;
+        uploadProgress = "Reading file...";
+
+        try
+        {
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            var userId = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+
+            if (string.IsNullOrEmpty(userId))
+            {
+                errorMessage = "User not authenticated";
+                return;
+            }
+
+            uploadProgress = "Uploading file to library...";
+
+            // Read file stream
+            using var stream = selectedFile.OpenReadStream(maxAllowedSize: 200 * 1024 * 1024); // 200MB
+
+            // Create DTO
+            var dto = new MediaLibraryItemDto
+            {
+                Title = uploadModel.Title,
+                Description = uploadModel.Description,
+                Category = uploadModel.Category,
+                Tags = uploadModel.Tags,
+                ContentType = selectedFile.ContentType,
+                OriginalFileName = selectedFile.Name,
+                FileSizeBytes = selectedFile.Size,
+                DurationSeconds = (float)audioDurationSeconds
+            };
+
+            uploadProgress = "Saving to library...";
+
+            // Upload to library
+            var item = await MediaLibraryService.AddToLibraryAsync(userId, stream, dto);
+
+            successMessage = $"Successfully added '{item.Title}' to your library!";
+            
+            // Reset form
+            uploadModel = new();
+            selectedFile = null;
+            tagsInput = "";
+
+            // Navigate to library after a brief delay
+            await Task.Delay(1500);
+            Navigation.NavigateTo("/library");
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Upload failed: {ex.Message}";
+        }
+        finally
+        {
+            isUploading = false;
+        }
+    }
+
+    private string FormatFileSize(long bytes)
+    {
+        string[] sizes = { "B", "KB", "MB", "GB" };
+        double len = bytes;
+        int order = 0;
+        while (len >= 1024 && order < sizes.Length - 1)
+        {
+            order++;
+            len = len / 1024;
+        }
+        return $"{len:0.##} {sizes[order]}";
+    }
+    
+    private string FormatDuration(float seconds)
+    {
+        var timeSpan = TimeSpan.FromSeconds(seconds);
+        if (timeSpan.TotalHours >= 1)
+        {
+            return $"{(int)timeSpan.TotalHours}h {timeSpan.Minutes}m";
+        }
+        if (timeSpan.TotalMinutes >= 1)
+        {
+            return $"{timeSpan.Minutes}m {timeSpan.Seconds}s";
+        }
+        return $"{timeSpan.TotalSeconds:F1}s";
+    }
+}

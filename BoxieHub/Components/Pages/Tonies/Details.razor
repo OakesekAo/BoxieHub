@@ -4,6 +4,7 @@
 @using BoxieHub.Services
 @using System.Security.Claims
 @using Microsoft.AspNetCore.Authorization
+@using BoxieHub.Components.Pages.Tonies.Components
 @inject ITonieService TonieService
 @inject AuthenticationStateProvider AuthStateProvider
 @inject NavigationManager Navigation
@@ -45,76 +46,13 @@
         </nav>
 
         <!-- Tonie Header -->
-        <div class="card shadow mb-4">
-            <div class="card-body">
-                <div class="row align-items-center">
-                    <div class="col-md-2 text-center">
-                        <img src="@tonie.ImageUrl" alt="@tonie.Name" class="img-fluid rounded" style="max-height: 150px;" />
-                    </div>
-                    <div class="col-md-7">
-                        <h2 class="mb-2">@tonie.Name</h2>
-                        <div class="mb-2">
-                            <span class="badge bg-primary me-2">
-                                <i class="bi bi-music-note"></i> @tonie.ChaptersPresent chapters
-                            </span>
-                            <span class="badge bg-info me-2">
-                                <i class="bi bi-clock"></i> @FormatDuration(tonie.SecondsPresent)
-                            </span>
-                            @if (tonie.Transcoding)
-                            {
-                                <span class="badge bg-warning">
-                                    <span class="spinner-border spinner-border-sm me-1"></span> Processing...
-                                </span>
-                            }
-                            else if (tonie.Live)
-                            {
-                                <span class="badge bg-success">
-                                    <i class="bi bi-check-circle-fill"></i> Live
-                                </span>
-                            }
-                        </div>
-                        
-                        <!-- Storage Progress Bar -->
-                        <div class="mt-3">
-                            <div class="d-flex justify-content-between mb-1">
-                                <small class="text-muted">Storage Used</small>
-                                <small class="text-muted">@GetStoragePercentage(tonie)% (@FormatDuration(tonie.SecondsPresent) / @FormatDuration(tonie.SecondsPresent + tonie.SecondsRemaining))</small>
-                            </div>
-                            <div class="progress" style="height: 20px;">
-                                <div class="progress-bar @GetStorageColorClass(tonie)" 
-                                     role="progressbar" 
-                                     style="width: @GetStoragePercentage(tonie)%" 
-                                     aria-valuenow="@GetStoragePercentage(tonie)" 
-                                     aria-valuemin="0" 
-                                     aria-valuemax="100">
-                                    @GetStoragePercentage(tonie)%
-                                </div>
-                            </div>
-                            <small class="text-muted">
-                                <i class="bi bi-info-circle"></i> @FormatDuration(tonie.SecondsRemaining) available
-                            </small>
-                        </div>
-                    </div>
-                    <div class="col-md-3 text-end">
-                        <button class="btn btn-outline-secondary mb-2 w-100" @onclick="RefreshTonie" disabled="@isRefreshing">
-                            @if (isRefreshing)
-                            {
-                                <span class="spinner-border spinner-border-sm me-2"></span>
-                                <span>Refreshing...</span>
-                            }
-                            else
-                            {
-                                <i class="bi bi-arrow-clockwise"></i>
-                                <span>Refresh</span>
-                            }
-                        </button>
-                        <a href="/tonies/@HouseholdId/@TonieId/upload" class="btn btn-primary w-100">
-                            <i class="bi bi-upload"></i> Upload Audio
-                        </a>
-                    </div>
-                </div>
-            </div>
-        </div>
+        <TonieHeader @key="tonieHeaderKey"
+                     Tonie="@tonie" 
+                     HouseholdId="@HouseholdId" 
+                     TonieId="@TonieId"
+                     IsRefreshing="@isRefreshing"
+                     OnRefresh="@RefreshTonie"
+                     OnChangeImage="@(() => showImageUploadModal = true)" />
 
         <!-- Chapters Section -->
         <div class="card shadow">
@@ -164,7 +102,7 @@
                                     <th>Title</th>
                                     <th style="width: 100px;">Duration</th>
                                     <th style="width: 120px;">Status</th>
-                                    <th style="width: 100px;" class="text-end">Actions</th>
+                                    <th style="width: 150px;" class="text-end">Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -175,17 +113,36 @@
                                         var chapter = tonie.Chapters[i];
                                         var index = i + 1;
                                         var currentIndex = i;
-                                        <tr draggable="true"
+                                        // Allow dragging unless a chapter is being edited
+                                        var isDraggable = !IsChapterEditing(chapter.Id) && !editingChapters.Any();
+                                        <tr draggable="@(isDraggable ? "true" : "false")"
                                             @key="chapter.Id"
                                             data-chapter-index="@currentIndex"
                                             class="chapter-row"
-                                            style="cursor: move;">
+                                            style="cursor: @(isDraggable ? "move" : "default");">
                                             <td class="align-middle text-muted">
-                                                <i class="bi bi-grip-vertical me-2" style="opacity: 0.5;"></i>
+                                                @if (isDraggable)
+                                                {
+                                                    <i class="bi bi-grip-vertical me-2" style="opacity: 0.5;"></i>
+                                                }
                                                 @index
                                             </td>
                                             <td class="align-middle">
-                                                <strong>@chapter.Title</strong>
+                                                @if (IsChapterEditing(chapter.Id))
+                                                {
+                                                    <input type="text" 
+                                                           class="form-control form-control-sm"
+                                                           @bind="editingTitles[chapter.Id]"
+                                                           @bind:event="oninput"
+                                                           maxlength="50"
+                                                           placeholder="Chapter title"
+                                                           @onkeydown="@((e) => HandleTitleKeyDown(e, chapter.Id))" />
+                                                    <small class="text-muted">@editingTitles[chapter.Id].Length / 50 characters</small>
+                                                }
+                                                else
+                                                {
+                                                    <strong>@chapter.Title</strong>
+                                                }
                                             </td>
                                             <td class="align-middle">
                                                 <small class="text-muted">
@@ -207,12 +164,43 @@
                                                 }
                                             </td>
                                             <td class="align-middle text-end">
-                                                <button class="btn btn-sm btn-outline-danger" 
-                                                        @onclick="() => ShowDeleteConfirmation(chapter)"
-                                                        disabled="@(isDeleting || hasUnsavedChanges)"
-                                                        title="Delete chapter">
-                                                    <i class="bi bi-trash"></i>
-                                                </button>
+                                                @if (IsChapterEditing(chapter.Id))
+                                                {
+                                                    <button class="btn btn-sm btn-success me-1" 
+                                                            @onclick="() => SaveChapterTitle(chapter.Id)"
+                                                            disabled="@isSavingTitle"
+                                                            title="Save">
+                                                        @if (isSavingTitle)
+                                                        {
+                                                            <span class="spinner-border spinner-border-sm"></span>
+                                                        }
+                                                        else
+                                                        {
+                                                            <i class="bi bi-check-lg"></i>
+                                                        }
+                                                    </button>
+                                                    <button class="btn btn-sm btn-secondary" 
+                                                            @onclick="() => CancelEditChapter(chapter.Id)"
+                                                            disabled="@isSavingTitle"
+                                                            title="Cancel">
+                                                        <i class="bi bi-x-lg"></i>
+                                                    </button>
+                                                }
+                                                else
+                                                {
+                                                    <button class="btn btn-sm btn-outline-primary me-1" 
+                                                            @onclick="() => StartEditChapter(chapter)"
+                                                            disabled="@(hasUnsavedChanges || isDeleting || editingChapters.Any())"
+                                                            title="Edit title">
+                                                        <i class="bi bi-pencil"></i>
+                                                    </button>
+                                                    <button class="btn btn-sm btn-outline-danger" 
+                                                            @onclick="() => ShowDeleteConfirmation(chapter)"
+                                                            disabled="@(isDeleting || hasUnsavedChanges || editingChapters.Any())"
+                                                            title="Delete chapter">
+                                                        <i class="bi bi-trash"></i>
+                                                    </button>
+                                                }
                                             </td>
                                         </tr>
                                     }
@@ -341,6 +329,93 @@
     </div>
 }
 
+<!-- Image Upload Modal -->
+@if (showImageUploadModal)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="bi bi-image"></i> Change Tonie Image
+                    </h5>
+                    <button type="button" class="btn-close" @onclick="() => showImageUploadModal = false" disabled="@isUploadingImage"></button>
+                </div>
+                <div class="modal-body">
+                    @if (!isUploadingImage)
+                    {
+                        <div class="mb-3">
+                            <label class="form-label">Upload Custom Image</label>
+                            <InputFile OnChange="HandleImageSelected" 
+                                      class="form-control" 
+                                      accept="image/png,image/jpeg,image/jpg,image/webp" />
+                            <small class="text-muted">
+                                <i class="bi bi-info-circle"></i> Supported formats: PNG, JPG, WEBP (Max: 5MB)
+                            </small>
+                        </div>
+
+                        @if (selectedImage != null)
+                        {
+                            <div class="alert alert-info">
+                                <h6><i class="bi bi-file-earmark-image"></i> Selected Image</h6>
+                                <p class="mb-1"><strong>Name:</strong> @selectedImageName</p>
+                                <p class="mb-0"><strong>Size:</strong> @FormatFileSize(selectedImageSize)</p>
+                            </div>
+                        }
+
+                        @if (!string.IsNullOrEmpty(imageUploadError))
+                        {
+                            <div class="alert alert-danger">
+                                <i class="bi bi-exclamation-triangle-fill"></i> @imageUploadError
+                            </div>
+                        }
+
+                        @if (tonie?.ImageUrl?.StartsWith("/uploads/") == true)
+                        {
+                            <div class="alert alert-warning">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <i class="bi bi-star-fill"></i> <strong>Current:</strong> Custom image is set
+                                    </div>
+                                    <button class="btn btn-sm btn-outline-danger" @onclick="DeleteCustomImage">
+                                        <i class="bi bi-trash"></i> Revert to Default
+                                    </button>
+                                </div>
+                            </div>
+                        }
+                    }
+                    else
+                    {
+                        <div class="text-center py-4">
+                            <div class="spinner-border text-primary mb-3" role="status">
+                                <span class="visually-hidden">Uploading...</span>
+                            </div>
+                            <p>Uploading image...</p>
+                        </div>
+                    }
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="() => showImageUploadModal = false" disabled="@isUploadingImage">
+                        Cancel
+                    </button>
+                    <button type="button" class="btn btn-primary" @onclick="UploadCustomImage" disabled="@(selectedImage == null || isUploadingImage)">
+                        @if (isUploadingImage)
+                        {
+                            <span class="spinner-border spinner-border-sm me-2"></span>
+                            <span>Uploading...</span>
+                        }
+                        else
+                        {
+                            <i class="bi bi-upload"></i>
+                            <span>Upload Image</span>
+                        }
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
 @code {
     [Parameter]
     public string HouseholdId { get; set; } = string.Empty;
@@ -364,6 +439,22 @@
     // Reorder state
     private bool hasUnsavedChanges = false;
     private DotNetObjectReference<Details>? dotnetRef;
+    
+    // Edit chapter state
+    private Dictionary<string, bool> editingChapters = new();
+    private Dictionary<string, string> editingTitles = new();
+    private bool isSavingTitle = false;
+    
+    // Image upload state
+    private bool showImageUploadModal = false;
+    private IBrowserFile? selectedImage;
+    private string selectedImageName = string.Empty;
+    private long selectedImageSize = 0;
+    private string? imageUploadError;
+    private bool isUploadingImage = false;
+    
+    // Component refresh key - change to force re-render
+    private Guid tonieHeaderKey = Guid.NewGuid();
 
     protected override async Task OnInitializedAsync()
     {
@@ -423,6 +514,13 @@
         finally
         {
             isLoading = false;
+            
+            // Re-initialize drag & drop after data loads
+            await Task.Delay(100);
+            if (dotnetRef != null && tonie?.Chapters?.Any() == true)
+            {
+                await JS.InvokeVoidAsync("chapterDragDrop.attachEventListeners");
+            }
         }
     }
 
@@ -440,6 +538,27 @@
                 tonie = await TonieService.GetCreativeTonieDetailsAsync(userId, HouseholdId, TonieId, forceRefresh: true);
                 ShowSuccess("Tonie refreshed successfully");
                 Logger.LogInformation("Force refreshed Tonie {TonieId} from API", TonieId);
+                
+                // Update original chapters after refresh
+                originalChapters = tonie.Chapters?.Select(c => new ChapterDto
+                {
+                    Id = c.Id,
+                    Title = c.Title,
+                    Seconds = c.Seconds,
+                    File = c.File,
+                    Transcoding = c.Transcoding
+                }).ToList();
+                hasUnsavedChanges = false;
+                
+                // Force state update
+                StateHasChanged();
+                
+                // Re-initialize drag & drop
+                await Task.Delay(100);
+                if (dotnetRef != null && tonie?.Chapters?.Any() == true)
+                {
+                    await JS.InvokeVoidAsync("chapterDragDrop.attachEventListeners");
+                }
             }
         }
         catch (Exception ex)
@@ -553,18 +672,282 @@
         return $"{timeSpan.Minutes}m {timeSpan.Seconds}s";
     }
 
-    private int GetStoragePercentage(CreativeTonieDto tonie)
+    private string FormatFileSize(long bytes)
     {
-        var total = tonie.SecondsPresent + tonie.SecondsRemaining;
-        return total > 0 ? (int)((tonie.SecondsPresent / total) * 100) : 0;
+        string[] sizes = { "B", "KB", "MB", "GB" };
+        double len = bytes;
+        int order = 0;
+        while (len >= 1024 && order < sizes.Length - 1)
+        {
+            order++;
+            len = len / 1024;
+        }
+        return $"{len:0.##} {sizes[order]}";
+    }
+    
+    // Image upload methods
+    private void HandleImageSelected(InputFileChangeEventArgs e)
+    {
+        imageUploadError = null;
+        selectedImage = e.File;
+
+        if (selectedImage != null)
+        {
+            selectedImageName = selectedImage.Name;
+            selectedImageSize = selectedImage.Size;
+
+            // Validate file extension
+            var extension = Path.GetExtension(selectedImage.Name).ToLowerInvariant();
+            var allowedExtensions = new[] { ".png", ".jpg", ".jpeg", ".webp" };
+
+            if (!allowedExtensions.Contains(extension))
+            {
+                imageUploadError = "Invalid file format. Please upload PNG, JPG, or WEBP images.";
+                selectedImage = null;
+                selectedImageName = string.Empty;
+                selectedImageSize = 0;
+                return;
+            }
+
+            // Check file size (max 5MB)
+            const long maxSizeBytes = 5 * 1024 * 1024;
+            if (selectedImage.Size > maxSizeBytes)
+            {
+                imageUploadError = $"Image too large. Maximum size is 5MB.";
+                selectedImage = null;
+                selectedImageName = string.Empty;
+                selectedImageSize = 0;
+                return;
+            }
+        }
     }
 
-    private string GetStorageColorClass(CreativeTonieDto tonie)
+    private async Task UploadCustomImage()
     {
-        var percentage = GetStoragePercentage(tonie);
-        if (percentage >= 90) return "bg-danger";
-        if (percentage >= 70) return "bg-warning";
-        return "bg-success";
+        if (selectedImage == null || tonie == null) return;
+
+        isUploadingImage = true;
+        imageUploadError = null;
+
+        try
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var userId = authState.User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+            if (string.IsNullOrEmpty(userId))
+            {
+                imageUploadError = "User not authenticated";
+                isUploadingImage = false;
+                return;
+            }
+
+            // Open file stream
+            using var stream = selectedImage.OpenReadStream(maxAllowedSize: 5 * 1024 * 1024);
+
+            // Upload image
+            var success = await TonieService.UploadCustomTonieImageAsync(
+                userId,
+                HouseholdId,
+                TonieId,
+                stream,
+                selectedImage.ContentType,
+                selectedImage.Name);
+
+            if (success)
+            {
+                // Close modal and reset first
+                showImageUploadModal = false;
+                selectedImage = null;
+                selectedImageName = string.Empty;
+                selectedImageSize = 0;
+                
+                // Force refresh from API to update cache with new image
+                await RefreshTonie();
+                
+                // Generate new key to force TonieHeader component re-render with fresh image
+                tonieHeaderKey = Guid.NewGuid();
+                
+                ShowSuccess("Custom image uploaded successfully!");
+            }
+            else
+            {
+                imageUploadError = "Failed to upload image";
+            }
+        }
+        catch (Exception ex)
+        {
+            imageUploadError = $"Error uploading image: {ex.Message}";
+            Logger.LogError(ex, "Error uploading custom image");
+        }
+        finally
+        {
+            isUploadingImage = false;
+        }
+    }
+
+    private async Task DeleteCustomImage()
+    {
+        if (tonie == null) return;
+
+        isUploadingImage = true;
+
+        try
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var userId = authState.User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+            if (string.IsNullOrEmpty(userId))
+            {
+                ShowError("User not authenticated");
+                isUploadingImage = false;
+                return;
+            }
+
+            var success = await TonieService.DeleteCustomTonieImageAsync(
+                userId,
+                HouseholdId,
+                TonieId);
+
+            if (success)
+            {
+                ShowSuccess("Custom image deleted. Reverted to default image.");
+                
+                // Reload Tonie details
+                await LoadTonieDetails();
+                
+                // Generate new key to force TonieHeader component re-render
+                tonieHeaderKey = Guid.NewGuid();
+                
+                // Close modal
+                showImageUploadModal = false;
+            }
+            else
+            {
+                ShowError("Failed to delete custom image");
+            }
+        }
+        catch (Exception ex)
+        {
+            ShowError($"Error deleting image: {ex.Message}");
+            Logger.LogError(ex, "Error deleting custom image");
+        }
+        finally
+        {
+            isUploadingImage = false;
+        }
+    }
+    
+    // Edit chapter methods
+    private bool IsChapterEditing(string chapterId)
+    {
+        return editingChapters.ContainsKey(chapterId) && editingChapters[chapterId];
+    }
+
+    private void StartEditChapter(ChapterDto chapter)
+    {
+        editingChapters[chapter.Id] = true;
+        editingTitles[chapter.Id] = chapter.Title;
+    }
+
+    private void CancelEditChapter(string chapterId)
+    {
+        editingChapters.Remove(chapterId);
+        editingTitles.Remove(chapterId);
+    }
+
+    private void HandleTitleKeyDown(KeyboardEventArgs e, string chapterId)
+    {
+        if (e.Key == "Enter")
+        {
+            _ = SaveChapterTitle(chapterId);
+        }
+        else if (e.Key == "Escape")
+        {
+            CancelEditChapter(chapterId);
+        }
+    }
+
+    private async Task SaveChapterTitle(string chapterId)
+    {
+        if (!editingTitles.TryGetValue(chapterId, out var newTitle))
+            return;
+        
+        // Validation
+        if (string.IsNullOrWhiteSpace(newTitle))
+        {
+            ShowError("Chapter title cannot be empty");
+            return;
+        }
+        
+        if (newTitle.Length > 50)
+        {
+            ShowError("Chapter title must be 50 characters or less");
+            return;
+        }
+        
+        var chapter = tonie?.Chapters?.FirstOrDefault(c => c.Id == chapterId);
+        if (chapter == null) return;
+        
+        var originalTitle = chapter.Title;
+        
+        // Skip if title hasn't changed
+        if (newTitle == originalTitle)
+        {
+            CancelEditChapter(chapterId);
+            return;
+        }
+        
+        // Optimistic update
+        chapter.Title = newTitle;
+        editingChapters.Remove(chapterId);
+        editingTitles.Remove(chapterId);
+        isSavingTitle = true;
+        StateHasChanged();
+        
+        try
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var userId = authState.User.FindFirstValue(ClaimTypes.NameIdentifier);
+            
+            if (string.IsNullOrEmpty(userId))
+            {
+                ShowError("User not authenticated");
+                chapter.Title = originalTitle; // Rollback
+                return;
+            }
+            
+            var success = await TonieService.UpdateChapterTitleAsync(
+                userId,
+                HouseholdId,
+                TonieId,
+                chapterId,
+                newTitle);
+            
+            if (success)
+            {
+                ShowSuccess($"Updated chapter title to '{newTitle}'");
+                Logger.LogInformation("Updated chapter {ChapterId} title to '{NewTitle}'", 
+                    chapterId, newTitle);
+                
+                // Reload to get fresh data
+                await LoadTonieDetails();
+            }
+            else
+            {
+                chapter.Title = originalTitle; // Rollback
+                ShowError("Failed to update chapter title");
+            }
+        }
+        catch (Exception ex)
+        {
+            chapter.Title = originalTitle; // Rollback
+            ShowError($"Error updating chapter: {ex.Message}");
+            Logger.LogError(ex, "Error updating chapter title for {ChapterId}", chapterId);
+        }
+        finally
+        {
+            isSavingTitle = false;
+        }
     }
     
     // Drag & Drop - JavaScript callback

@@ -1,0 +1,47 @@
+services:
+  # MinIO - S3-compatible object storage for development
+  minio:
+    image: minio/minio:latest
+    container_name: boxiehub-minio
+    ports:
+      - "9000:9000"      # S3 API port
+      - "9001:9001"      # MinIO Console (Web UI)
+    environment:
+      MINIO_ROOT_USER: boxiehub
+      MINIO_ROOT_PASSWORD: boxiehub-dev-password-123
+      MINIO_DOMAIN: localhost
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    networks:
+      - boxiehub-network
+
+  # PostgreSQL - Database (if you want to run it in Docker too)
+  # postgres:
+  #   image: postgres:16
+  #   container_name: boxiehub-postgres
+  #   ports:
+  #     - "5432:5432"
+  #   environment:
+  #     POSTGRES_USER: postgres
+  #     POSTGRES_PASSWORD: postgres
+  #     POSTGRES_DB: boxiehub
+  #   volumes:
+  #     - postgres-data:/var/lib/postgresql/data
+  #   networks:
+  #     - boxiehub-network
+
+volumes:
+  minio-data:
+    driver: local
+  # postgres-data:
+  #   driver: local
+
+networks:
+  boxiehub-network:
+    driver: bridge

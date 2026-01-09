@@ -16,9 +16,14 @@ namespace BoxieHub.Data
         public DbSet<SyncJob> SyncJobs { get; set; }
         public DbSet<HouseholdMember> HouseholdMembers { get; set; }
         public DbSet<TonieCredential> TonieCredentials { get; set; }
-        public DbSet<AudioUploadHistory> AudioUploadHistories { get; set; }
-        
-        protected override void OnModelCreating(ModelBuilder builder)
+    public DbSet<AudioUploadHistory> AudioUploadHistories { get; set; }
+    public DbSet<MediaLibraryItem> MediaLibraryItems { get; set; }
+    public DbSet<MediaLibraryUsage> MediaLibraryUsages { get; set; }
+    public DbSet<UserStorageAccount> UserStorageAccounts { get; set; }
+    public DbSet<UserStoragePreference> UserStoragePreferences { get; set; }
+    public DbSet<ImportJob> ImportJobs { get; set; }
+
+    protected override void OnModelCreating(ModelBuilder builder)
         {
             base.OnModelCreating(builder);
             
@@ -80,6 +85,48 @@ namespace BoxieHub.Data
             builder.Entity<FileUpload>()
                 .HasIndex(f => f.Created)
                 .HasDatabaseName("IX_FileUploads_Created");
+            
+            builder.Entity<FileUpload>()
+                .HasIndex(f => f.Provider)
+                .HasDatabaseName("IX_FileUploads_Provider");
+            
+            // UserStorageAccount indexes
+            builder.Entity<UserStorageAccount>()
+                .HasIndex(u => u.UserId)
+                .HasDatabaseName("IX_UserStorageAccounts_UserId");
+            
+            builder.Entity<UserStorageAccount>()
+                .HasIndex(u => new { u.UserId, u.Provider })
+                .HasDatabaseName("IX_UserStorageAccounts_UserId_Provider");
+            
+            builder.Entity<UserStorageAccount>()
+                .HasIndex(u => u.IsActive)
+                .HasDatabaseName("IX_UserStorageAccounts_IsActive");
+            
+            // UserStoragePreference unique constraint
+            builder.Entity<UserStoragePreference>()
+                .HasIndex(u => u.UserId)
+                .IsUnique()
+                .HasDatabaseName("IX_UserStoragePreferences_UserId");
+            
+            // ImportJob indexes
+            builder.Entity<ImportJob>()
+                .HasIndex(i => i.UserId)
+                .HasDatabaseName("IX_ImportJobs_UserId");
+            
+            builder.Entity<ImportJob>()
+                .HasIndex(i => i.Status)
+                .HasDatabaseName("IX_ImportJobs_Status");
+            
+            builder.Entity<ImportJob>()
+                .HasIndex(i => i.Created)
+                .HasDatabaseName("IX_ImportJobs_Created");
+            
+            builder.Entity<ImportJob>()
+                .HasOne(i => i.MediaLibraryItem)
+                .WithMany()
+                .HasForeignKey(i => i.MediaLibraryItemId)
+                .OnDelete(DeleteBehavior.SetNull);
         }
     }
 }

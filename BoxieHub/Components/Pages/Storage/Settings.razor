@@ -1,0 +1,252 @@
+@page "/storage/settings"
+@using BoxieHub.Models
+@using BoxieHub.Services
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize]
+@inject NavigationManager Navigation
+@inject AuthenticationStateProvider AuthenticationStateProvider
+
+<PageTitle>Storage Settings - BoxieHub</PageTitle>
+
+<div class="container mt-4">
+    <h2><i class="bi bi-hdd"></i> Storage Settings</h2>
+    <p class="text-muted">Choose where your audio files are stored</p>
+
+    @if (!string.IsNullOrEmpty(successMessage))
+    {
+        <div class="alert alert-success alert-dismissible fade show" role="alert">
+            <i class="bi bi-check-circle"></i> @successMessage
+            <button type="button" class="btn-close" @onclick="() => successMessage = null"></button>
+        </div>
+    }
+
+    @if (!string.IsNullOrEmpty(errorMessage))
+    {
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            <i class="bi bi-exclamation-triangle"></i> @errorMessage
+            <button type="button" class="btn-close" @onclick="() => errorMessage = null"></button>
+        </div>
+    }
+
+    <div class="row">
+        <div class="col-lg-8">
+            <!-- Current Storage Provider -->
+            <div class="card mb-4">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0"><i class="bi bi-check-circle-fill"></i> Current Storage Provider</h5>
+                </div>
+                <div class="card-body">
+                    <div class="d-flex align-items-center">
+                        <div class="me-3">
+                            <i class="bi bi-hdd-rack display-4 text-primary"></i>
+                        </div>
+                        <div>
+                            <h5>BoxieHub S3 Storage (Railway)</h5>
+                            <p class="text-muted mb-0">
+                                Your files are stored securely on BoxieHub's S3-compatible storage. 
+                                This is managed for you automatically.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Available Storage Providers -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">Available Storage Providers</h5>
+                </div>
+                <div class="card-body">
+                    <!-- BoxieHub S3 (Default) -->
+                    <div class="storage-provider-card selected mb-3 p-3 border rounded">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div class="flex-grow-1">
+                                <div class="d-flex align-items-center mb-2">
+                                    <i class="bi bi-hdd-rack fs-3 me-3 text-primary"></i>
+                                    <div>
+                                        <h6 class="mb-0">BoxieHub S3 Storage</h6>
+                                        <small class="text-success"><i class="bi bi-check-circle-fill"></i> Active</small>
+                                    </div>
+                                </div>
+                                <p class="mb-2">
+                                    <strong>Recommended</strong> - S3-compatible storage managed by BoxieHub. 
+                                    Works with MinIO (development) and Railway S3 (production).
+                                </p>
+                                <div class="mb-2">
+                                    <span class="badge bg-success">? Automatic</span>
+                                    <span class="badge bg-success">? Fast</span>
+                                    <span class="badge bg-success">? Reliable</span>
+                                    <span class="badge bg-info">Free</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Dropbox (Coming Soon) -->
+                    <div class="storage-provider-card mb-3 p-3 border rounded bg-light">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div class="flex-grow-1">
+                                <div class="d-flex align-items-center mb-2">
+                                    <i class="bi bi-dropbox fs-3 me-3 text-muted"></i>
+                                    <div>
+                                        <h6 class="mb-0">Dropbox</h6>
+                                        <small class="text-muted">Coming Soon</small>
+                                    </div>
+                                </div>
+                                <p class="mb-2">
+                                    Store your audio files in your personal Dropbox account. 
+                                    Requires Dropbox OAuth authentication.
+                                </p>
+                                <div class="mb-2">
+                                    <span class="badge bg-secondary">2GB Free</span>
+                                    <span class="badge bg-secondary">OAuth 2.0</span>
+                                </div>
+                            </div>
+                            <button class="btn btn-outline-secondary" disabled>
+                                <i class="bi bi-link-45deg"></i> Connect
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Google Drive (Coming Soon) -->
+                    <div class="storage-provider-card mb-3 p-3 border rounded bg-light">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div class="flex-grow-1">
+                                <div class="d-flex align-items-center mb-2">
+                                    <i class="bi bi-google fs-3 me-3 text-muted"></i>
+                                    <div>
+                                        <h6 class="mb-0">Google Drive</h6>
+                                        <small class="text-muted">Coming Soon</small>
+                                    </div>
+                                </div>
+                                <p class="mb-2">
+                                    Store your audio files in your Google Drive account. 
+                                    Requires Google OAuth authentication.
+                                </p>
+                                <div class="mb-2">
+                                    <span class="badge bg-secondary">15GB Free</span>
+                                    <span class="badge bg-secondary">OAuth 2.0</span>
+                                </div>
+                            </div>
+                            <button class="btn btn-outline-secondary" disabled>
+                                <i class="bi bi-link-45deg"></i> Connect
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Database Storage (Fallback) -->
+                    <div class="storage-provider-card p-3 border rounded bg-light">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div class="flex-grow-1">
+                                <div class="d-flex align-items-center mb-2">
+                                    <i class="bi bi-database fs-3 me-3 text-muted"></i>
+                                    <div>
+                                        <h6 class="mb-0">Database Storage</h6>
+                                        <small class="text-muted">Fallback Only</small>
+                                    </div>
+                                </div>
+                                <p class="mb-2">
+                                    Store files directly in PostgreSQL database. 
+                                    <strong>Not recommended</strong> for audio files due to size limitations.
+                                </p>
+                                <div class="mb-2">
+                                    <span class="badge bg-warning">Limited Size</span>
+                                    <span class="badge bg-warning">Slower</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- How It Works -->
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-info-circle"></i> How Storage Works</h5>
+                </div>
+                <div class="card-body">
+                    <h6>Current Setup</h6>
+                    <ul class="mb-3">
+                        <li><strong>Development:</strong> Uses MinIO (local S3-compatible storage via Docker)</li>
+                        <li><strong>Production:</strong> Uses Railway S3 (cloud storage)</li>
+                        <li><strong>Automatic:</strong> Storage provider selected based on environment</li>
+                    </ul>
+
+                    <h6>Future Features (Phase 4)</h6>
+                    <ul class="mb-0">
+                        <li>Choose between multiple storage providers</li>
+                        <li>Connect your personal Dropbox or Google Drive</li>
+                        <li>Migrate files between storage providers</li>
+                        <li>View storage usage and quotas</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sidebar -->
+        <div class="col-lg-4">
+            <!-- Storage Usage (Placeholder) -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h6 class="mb-0"><i class="bi bi-pie-chart"></i> Storage Usage</h6>
+                </div>
+                <div class="card-body">
+                    <div class="text-center mb-3">
+                        <i class="bi bi-cloud-check display-1 text-success"></i>
+                    </div>
+                    <p class="text-muted text-center">
+                        Storage usage tracking will be available in a future update.
+                    </p>
+                </div>
+            </div>
+
+            <!-- Quick Actions -->
+            <div class="card">
+                <div class="card-header">
+                    <h6 class="mb-0"><i class="bi bi-lightning"></i> Quick Actions</h6>
+                </div>
+                <div class="card-body">
+                    <div class="d-grid gap-2">
+                        <a href="/library" class="btn btn-primary">
+                            <i class="bi bi-collection-play"></i> View Media Library
+                        </a>
+                        <a href="/library/upload" class="btn btn-outline-primary">
+                            <i class="bi bi-upload"></i> Upload Audio
+                        </a>
+                        <a href="/tonies" class="btn btn-outline-secondary">
+                            <i class="bi bi-music-note-list"></i> Manage Tonies
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .storage-provider-card {
+        transition: all 0.2s ease;
+    }
+
+    .storage-provider-card:not(.bg-light):hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    }
+
+    .storage-provider-card.selected {
+        border-color: var(--bs-primary) !important;
+        border-width: 2px !important;
+        background-color: rgba(13, 110, 253, 0.05);
+    }
+</style>
+
+@code {
+    private string? successMessage;
+    private string? errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Future: Load user's storage accounts and preferences
+        await Task.CompletedTask;
+    }
+}

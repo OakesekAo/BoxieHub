@@ -19,26 +19,50 @@
 
                 <AuthorizeView>
                     <Authorized>
-                        <div class="nav-item">
+                        <li class="nav-item">
                             <NavLink class="nav-link" href="tonies">
-                                <span class="bi bi-music-note-list" aria-hidden="true"></span> My Tonies
+                                <i class="bi bi-music-note-list"></i>
+                                <span>My Tonies</span>
                             </NavLink>
-                        </div>
-                        <div class="nav-item">
-                            <NavLink class="nav-link" href="tonies/add-account">
-                                <span class="bi bi-link-45deg-nav-menu" aria-hidden="true"></span> Add Tonie Account
+                        </li>
+                        <li class="nav-item">
+                            <NavLink class="nav-link" href="library">
+                                <i class="bi bi-collection-play"></i>
+                                <span>Media Library</span>
                             </NavLink>
-                        </div>
-
+                        </li>
+                        <li class="nav-item">
+                            <NavLink class="nav-link" href="library/import/youtube">
+                                <i class="bi bi-youtube"></i>
+                                <span>Import from YouTube</span>
+                            </NavLink>
+                        </li>
+                        <li class="nav-item dropdown">
+                            <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown">
+                                <i class="bi bi-gear"></i>
+                                <span>Settings</span>
+                            </a>
+                            <ul class="dropdown-menu">
+                                <li>
+                                    <NavLink class="dropdown-item" href="tonies/add-account">
+                                        <i class="bi bi-link-45deg"></i> Add Tonie Account
+                                    </NavLink>
+                                </li>
+                                <li>
+                                    <NavLink class="dropdown-item" href="tonies/accounts">
+                                        <i class="bi bi-person-lines-fill"></i> Manage Accounts
+                                    </NavLink>
+                                </li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li>
+                                    <NavLink class="dropdown-item" href="storage/settings">
+                                        <i class="bi bi-hdd"></i> Storage Settings
+                                    </NavLink>
+                                </li>
+                            </ul>
+                        </li>
                     </Authorized>
                 </AuthorizeView>
-
-                <li class="nav-item">
-                    <NavLink class="nav-link" href="/themes">
-                        <i class="bi bi-palette"></i>
-                        <span>Themes</span>
-                    </NavLink>
-                </li>
 
             </ul>
             <ul class="navbar-nav ms-auto mb-2 mb-lg-0">

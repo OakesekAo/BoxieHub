@@ -4,6 +4,7 @@ using BoxieHub.Models;
 using BoxieHub.Models.BoxieCloud;
 using BoxieHub.Services;
 using BoxieHub.Services.BoxieCloud;
+using BoxieHub.Services.Storage;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -18,33 +19,41 @@ public class TonieServiceCascadeDeleteTests : IDisposable
     private readonly Mock<ICredentialEncryptionService> _mockEncryption;
     private readonly Mock<IDbContextFactory<ApplicationDbContext>> _mockDbContextFactory;
     private readonly ApplicationDbContext _dbContext;
+    private readonly DbContextOptions<ApplicationDbContext> _dbOptions;
+    private readonly Mock<IFileStorageService> _mockFileStorage;
+    private readonly Mock<IStoragePreferenceService> _mockStoragePreference;
     private readonly Mock<ILogger<TonieService>> _mockLogger;
     private readonly TonieService _service;
     private readonly string _testUserId = "test-user-123";
 
     public TonieServiceCascadeDeleteTests()
     {
-        // Setup in-memory database
-        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+        // Setup in-memory database OPTIONS (shared across contexts)
+        _dbOptions = new DbContextOptionsBuilder<ApplicationDbContext>()
             .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
             .Options;
-        _dbContext = new ApplicationDbContext(options);
+        
+        _dbContext = new ApplicationDbContext(_dbOptions);
 
         // Setup mocks
         _mockBoxieClient = new Mock<IBoxieCloudClient>();
         _mockEncryption = new Mock<ICredentialEncryptionService>();
+        _mockFileStorage = new Mock<IFileStorageService>();
+        _mockStoragePreference = new Mock<IStoragePreferenceService>();
         _mockLogger = new Mock<ILogger<TonieService>>();
 
-        // Mock IDbContextFactory to return the same in-memory DbContext
+        // Mock IDbContextFactory to create NEW contexts each time (to avoid disposal issues)
         _mockDbContextFactory = new Mock<IDbContextFactory<ApplicationDbContext>>();
         _mockDbContextFactory.Setup(x => x.CreateDbContextAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(_dbContext);
+            .ReturnsAsync(() => new ApplicationDbContext(_dbOptions)); // Create new instance
 
         // Create service
         _service = new TonieService(
             _mockBoxieClient.Object,
             _mockEncryption.Object,
             _mockDbContextFactory.Object,
+            _mockFileStorage.Object,
+            _mockStoragePreference.Object,
             _mockLogger.Object);
     }
 
@@ -114,9 +123,10 @@ public class TonieServiceCascadeDeleteTests : IDisposable
         // Act
         await _service.DeleteAccountDataAsync(credential.Id);
 
-        // Assert - Use same in-memory DB
-        var remainingHouseholds = await _dbContext.Households.ToListAsync();
-        var remainingCharacters = await _dbContext.Characters.ToListAsync();
+        // Assert - Create fresh context to verify changes
+        using var assertContext = new ApplicationDbContext(_dbOptions);
+        var remainingHouseholds = await assertContext.Households.ToListAsync();
+        var remainingCharacters = await assertContext.Characters.ToListAsync();
 
         remainingHouseholds.Should().BeEmpty("synced households should be deleted");
         remainingCharacters.Should().BeEmpty("creative tonies should be deleted");
@@ -187,10 +197,11 @@ public class TonieServiceCascadeDeleteTests : IDisposable
         // Act
         await _service.DeleteAccountDataAsync(credential.Id);
 
-        // Assert
-        var remainingHouseholds = await _dbContext.Households.ToListAsync();
-        var remainingDevices = await _dbContext.Devices.ToListAsync();
-        var remainingContent = await _dbContext.ContentItems.ToListAsync();
+        // Assert - Create fresh context to verify changes
+        using var assertContext = new ApplicationDbContext(_dbOptions);
+        var remainingHouseholds = await assertContext.Households.ToListAsync();
+        var remainingDevices = await assertContext.Devices.ToListAsync();
+        var remainingContent = await assertContext.ContentItems.ToListAsync();
 
         remainingHouseholds.Should().ContainSingle("local household should NOT be deleted");
         remainingDevices.Should().ContainSingle("devices should NOT be deleted");
@@ -260,12 +271,16 @@ public class TonieServiceCascadeDeleteTests : IDisposable
         // Act
         await _service.DeleteAccountDataAsync(credential.Id);
 
-        // Assert
-        var remainingCharacters = await _dbContext.Characters.ToListAsync();
+        // Assert - Create fresh context to verify changes
+        using var assertContext = new ApplicationDbContext(_dbOptions);
+        var remainingCharacters = await assertContext.Characters.ToListAsync();
+        var remainingHouseholds = await assertContext.Households.ToListAsync();
         
-        // Both should be deleted since the household is deleted
-        // (household deletion cascades to all characters)
-        remainingCharacters.Should().BeEmpty("all characters in synced household should be deleted");
+        // Only Creative Tonies should be deleted (the service only deletes CharacterType.Creative)
+        // Content Tonies remain, but the household is gone
+        remainingCharacters.Should().ContainSingle("only content tonie should remain");
+        remainingCharacters.Single().Type.Should().Be(CharacterType.Content);
+        remainingHouseholds.Should().BeEmpty("synced household should be deleted");
     }
 
     [Fact]
@@ -274,9 +289,10 @@ public class TonieServiceCascadeDeleteTests : IDisposable
         // Act & Assert - Should not throw
         await _service.DeleteAccountDataAsync(99999); // Non-existent ID
 
-        // Verify no changes were made
-        var households = await _dbContext.Households.ToListAsync();
-        var characters = await _dbContext.Characters.ToListAsync();
+        // Verify no changes were made - Create fresh context
+        using var assertContext = new ApplicationDbContext(_dbOptions);
+        var households = await assertContext.Households.ToListAsync();
+        var characters = await assertContext.Characters.ToListAsync();
 
         households.Should().BeEmpty();
         characters.Should().BeEmpty();

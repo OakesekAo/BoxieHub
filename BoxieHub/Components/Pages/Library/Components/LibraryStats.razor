@@ -1,0 +1,125 @@
+@using BoxieHub.Models
+
+<div class="card">
+    <div class="card-header">
+        <h6 class="mb-0"><i class="bi bi-bar-chart"></i> Library Statistics</h6>
+    </div>
+    <div class="card-body">
+        <div class="row mb-4">
+            <div class="col-md-3 col-6 mb-3">
+                <div class="card text-center h-100">
+                    <div class="card-body">
+                        <i class="bi bi-collection-play text-primary fs-3"></i>
+                        <h3 class="text-primary mt-2">@Stats.TotalItems</h3>
+                        <small class="text-muted">Total Items</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3 col-6 mb-3">
+                <div class="card text-center h-100">
+                    <div class="card-body">
+                        <i class="bi bi-hdd text-success fs-3"></i>
+                        <h3 class="text-success mt-2">@Stats.FormattedTotalSize</h3>
+                        <small class="text-muted">Total Size</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3 col-6 mb-3">
+                <div class="card text-center h-100">
+                    <div class="card-body">
+                        <i class="bi bi-clock text-info fs-3"></i>
+                        <h3 class="text-info mt-2">@Stats.FormattedTotalDuration</h3>
+                        <small class="text-muted">Total Duration</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3 col-6 mb-3">
+                <div class="card text-center h-100">
+                    <div class="card-body">
+                        <i class="bi bi-disc text-warning fs-3"></i>
+                        <h3 class="text-warning mt-2">@Stats.TotalUses</h3>
+                        <small class="text-muted">Total Uses</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        @if (Stats.ItemsByCategory.Any())
+        {
+            <div class="mb-4">
+                <h6 class="mb-3">Items by Category</h6>
+                <div class="list-group">
+                    @foreach (var category in Stats.ItemsByCategory.OrderByDescending(x => x.Value))
+                    {
+                        <div class="list-group-item d-flex justify-content-between align-items-center">
+                            <span>
+                                <i class="bi bi-folder"></i> @category.Key
+                            </span>
+                            <span class="badge bg-primary rounded-pill">@category.Value</span>
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+
+        @if (Stats.MostUsedItems.Any())
+        {
+            <div class="mb-4">
+                <h6 class="mb-3">Most Used Items</h6>
+                <div class="list-group">
+                    @foreach (var item in Stats.MostUsedItems.Take(5))
+                    {
+                        <div class="list-group-item">
+                            <div class="d-flex justify-content-between align-items-start">
+                                <div class="flex-grow-1">
+                                    <strong>@item.Title</strong>
+                                    @if (!string.IsNullOrEmpty(item.Category))
+                                    {
+                                        <span class="badge bg-secondary ms-2">@item.Category</span>
+                                    }
+                                    <br />
+                                    <small class="text-muted">
+                                        <i class="bi bi-clock"></i> @item.FormattedDuration
+                                    </small>
+                                </div>
+                                <span class="badge bg-success rounded-pill">@item.UseCount uses</span>
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+
+        @if (Stats.RecentlyAdded.Any())
+        {
+            <div>
+                <h6 class="mb-3">Recently Added</h6>
+                <div class="list-group">
+                    @foreach (var item in Stats.RecentlyAdded.Take(5))
+                    {
+                        <div class="list-group-item">
+                            <div class="d-flex justify-content-between align-items-start">
+                                <div class="flex-grow-1">
+                                    <strong>@item.Title</strong>
+                                    @if (!string.IsNullOrEmpty(item.Category))
+                                    {
+                                        <span class="badge bg-secondary ms-2">@item.Category</span>
+                                    }
+                                    <br />
+                                    <small class="text-muted">
+                                        <i class="bi bi-calendar"></i> @item.Created.ToString("MMM d, yyyy")
+                                    </small>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public LibraryStatsDto Stats { get; set; } = null!;
+}

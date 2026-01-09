@@ -3,14 +3,17 @@
 namespace BoxieHub.Models
 {
     /// <summary>
-    /// Represents a file upload (image, audio, etc.) stored in the database
-    /// Can be extended to support external storage (S3, MinIO, etc.)
+    /// Represents a file upload (image, audio, etc.)
+    /// Supports database storage (legacy, for small images) and external storage (S3, Dropbox, GDrive)
     /// </summary>
     public class FileUpload
     {
         public Guid Id { get; set; }
         
-        [Required]
+        /// <summary>
+        /// File data (nullable - only used for Database storage provider)
+        /// For external storage, this will be null and StoragePath will be used
+        /// </summary>
         public byte[]? Data { get; set; }
         
         [Required]
@@ -38,10 +41,28 @@ namespace BoxieHub.Models
         
         public string Url => $"/uploads/{Id}";
 
-        // For future: external storage support
-        // [MaxLength(512)]
-        // public string? StoragePath { get; set; }
-        // public string? StorageProvider { get; set; } // "Local", "S3", "MinIO"
+        // ===== External Storage Support =====
+        
+        /// <summary>
+        /// Storage provider (Database, S3Railway, Dropbox, GoogleDrive)
+        /// </summary>
+        public StorageProvider Provider { get; set; } = StorageProvider.Database;
+        
+        /// <summary>
+        /// Path/key in external storage (null for Database provider)
+        /// For S3: "users/{userId}/{guid}/{filename}"
+        /// For Dropbox: "/BoxieHub/{userId}/{filename}"
+        /// For GDrive: file ID
+        /// </summary>
+        [MaxLength(1024)]
+        public string? StoragePath { get; set; }
+        
+        /// <summary>
+        /// Reference to user's connected storage account (null for Database/S3Railway)
+        /// Required for Dropbox and GoogleDrive
+        /// </summary>
+        public int? UserStorageAccountId { get; set; }
+        public UserStorageAccount? UserStorageAccount { get; set; }
     }
     
     /// <summary>

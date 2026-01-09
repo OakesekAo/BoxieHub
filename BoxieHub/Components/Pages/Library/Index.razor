@@ -1,0 +1,412 @@
+@rendermode InteractiveServer
+@page "/library"
+@using BoxieHub.Models
+@using BoxieHub.Services
+@using BoxieHub.Components.Pages.Library.Components
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize]
+@inject IMediaLibraryService MediaLibraryService
+@inject NavigationManager Navigation
+@inject AuthenticationStateProvider AuthenticationStateProvider
+
+<PageTitle>Media Library - BoxieHub</PageTitle>
+
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2><i class="bi bi-collection-play"></i> My Media Library</h2>
+            <p class="text-muted">Manage your audio files and reuse them across multiple Tonies</p>
+        </div>
+        <div>
+            <a href="/library/upload" class="btn btn-primary">
+                <i class="bi bi-upload"></i> Add to Library
+            </a>
+        </div>
+    </div>
+
+    @if (isLoading)
+    {
+        <div class="text-center py-5">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <p class="mt-3 text-muted">Loading your media library...</p>
+        </div>
+    }
+    else if (!string.IsNullOrEmpty(errorMessage))
+    {
+        <div class="alert alert-danger" role="alert">
+            <i class="bi bi-exclamation-triangle"></i> @errorMessage
+        </div>
+    }
+    else if (libraryItems == null || !libraryItems.Any())
+    {
+        <div class="text-center py-5">
+            <i class="bi bi-collection-play display-1 text-muted"></i>
+            <h3 class="mt-3">Your library is empty</h3>
+            <p class="text-muted">Start building your media library by uploading audio files</p>
+            <a href="/library/upload" class="btn btn-primary mt-3">
+                <i class="bi bi-upload"></i> Upload Your First File
+            </a>
+        </div>
+    }
+    else
+    {
+        <!-- Search & Filter Bar -->
+        <div class="row mb-4">
+            <div class="col-md-5">
+                <div class="input-group">
+                    <span class="input-group-text"><i class="bi bi-search"></i></span>
+                    <input type="text" 
+                           class="form-control" 
+                           placeholder="Search by title, description, or filename..." 
+                           @bind="searchQuery" 
+                           @bind:event="oninput"
+                           @onkeyup="HandleSearchChange" />
+                </div>
+            </div>
+            <div class="col-md-3">
+                <select class="form-select" @bind="selectedCategory" @bind:after="ApplyFilters">
+                    <option value="">All Categories</option>
+                    <option value="Music">Music</option>
+                    <option value="Story">Story</option>
+                    <option value="Educational">Educational</option>
+                    <option value="Podcast">Podcast</option>
+                    <option value="Other">Other</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <select class="form-select" @bind="sortBy" @bind:after="ApplyFilters">
+                    <option value="recent">Recently Added</option>
+                    <option value="name">Name (A-Z)</option>
+                    <option value="duration">Duration</option>
+                    <option value="mostused">Most Used</option>
+                </select>
+            </div>
+            <div class="col-md-1">
+                @if (stats != null)
+                {
+                    <button class="btn btn-outline-secondary" @onclick="ShowStats" title="Library Statistics">
+                        <i class="bi bi-bar-chart"></i>
+                    </button>
+                }
+            </div>
+        </div>
+
+        <!-- Library Grid -->
+        <div class="row">
+            @foreach (var item in filteredItems)
+            {
+                <div class="col-md-6 col-lg-4 mb-4">
+                    <LibraryItemCard Item="@item"
+                                     IsSelected="@(selectedItem?.Id == item.Id)"
+                                     ShowTags="true"
+                                     OnClick="@(() => NavigateToDetails(item.Id))"
+                                     OnEdit="@((item) => NavigateToDetails(item.Id))"
+                                     OnDelete="@ShowDeleteConfirmation" />
+                </div>
+            }
+        </div>
+
+        @if (filteredItems.Count == 0 && libraryItems.Any())
+        {
+            <div class="text-center py-5">
+                <i class="bi bi-search display-4 text-muted"></i>
+                <h4 class="mt-3">No results found</h4>
+                <p class="text-muted">Try adjusting your search or filters</p>
+                <button class="btn btn-outline-primary" @onclick="ClearFilters">Clear Filters</button>
+            </div>
+        }
+    }
+</div>
+
+<!-- Statistics Modal -->
+@if (showStatsModal && stats != null)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-bar-chart"></i> Library Statistics</h5>
+                    <button type="button" class="btn-close" @onclick="() => showStatsModal = false"></button>
+                </div>
+                <div class="modal-body">
+                    <LibraryStats Stats="@stats" />
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="() => showStatsModal = false">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Delete Confirmation Modal -->
+@if (showDeleteModal && itemToDelete != null)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header bg-danger text-white">
+                    <h5 class="modal-title">
+                        <i class="bi bi-exclamation-triangle"></i> Confirm Deletion
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" @onclick="CancelDelete" disabled="@isDeleting"></button>
+                </div>
+                <div class="modal-body">
+                    <p><strong>Are you sure you want to delete this media item?</strong></p>
+                    <div class="alert alert-warning">
+                        <div><strong>Title:</strong> @itemToDelete.Title</div>
+                        <div><strong>Duration:</strong> @itemToDelete.FormattedDuration</div>
+                        <div><strong>Size:</strong> @itemToDelete.FormattedFileSize</div>
+                    </div>
+                    @if (itemToDelete.UseCount > 0)
+                    {
+                        <div class="alert alert-info">
+                            <i class="bi bi-info-circle"></i> This item has been used <strong>@itemToDelete.UseCount time(s)</strong> on Tonies.
+                        </div>
+                    }
+                    <p class="text-danger mb-0">
+                        <i class="bi bi-exclamation-circle"></i> This action cannot be undone. The file will be permanently deleted.
+                    </p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="CancelDelete" disabled="@isDeleting">
+                        Cancel
+                    </button>
+                    <button type="button" class="btn btn-danger" @onclick="ConfirmDelete" disabled="@isDeleting">
+                        @if (isDeleting)
+                        {
+                            <span class="spinner-border spinner-border-sm me-2"></span>
+                            <span>Deleting...</span>
+                        }
+                        else
+                        {
+                            <i class="bi bi-trash me-2"></i>
+                            <span>Delete Permanently</span>
+                        }
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Success/Error Toast -->
+@if (!string.IsNullOrEmpty(statusMessage))
+{
+    <div class="position-fixed bottom-0 end-0 p-3" style="z-index: 1050">
+        <div class="toast show border-0 @(isError ? "bg-danger" : "bg-success") text-white" role="alert">
+            <div class="toast-body d-flex align-items-center">
+                <i class="bi @(isError ? "bi-exclamation-circle-fill" : "bi-check-circle-fill") me-2" style="font-size: 1.5rem;"></i>
+                <div class="flex-grow-1">
+                    <strong>@(isError ? "Error" : "Success")</strong>
+                    <div class="small">@statusMessage</div>
+                </div>
+                <button type="button" class="btn-close btn-close-white" @onclick="() => statusMessage = null"></button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<MediaLibraryItem> libraryItems = new();
+    private List<MediaLibraryItem> filteredItems = new();
+    private LibraryStatsDto? stats;
+    private MediaLibraryItem? selectedItem;
+    
+    private bool isLoading = true;
+    private string? errorMessage;
+    private bool showStatsModal = false;
+    
+    // Delete modal state
+    private bool showDeleteModal = false;
+    private MediaLibraryItem? itemToDelete;
+    private bool isDeleting = false;
+    
+    // Toast state
+    private string? statusMessage;
+    private bool isError = false;
+
+    // Filters
+    private string searchQuery = "";
+    private string selectedCategory = "";
+    private string sortBy = "recent";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadLibrary();
+    }
+
+    private async Task LoadLibrary()
+    {
+        isLoading = true;
+        errorMessage = null;
+
+        try
+        {
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            var userId = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+
+            if (string.IsNullOrEmpty(userId))
+            {
+                errorMessage = "User not authenticated";
+                return;
+            }
+
+            libraryItems = await MediaLibraryService.GetUserLibraryAsync(userId);
+            stats = await MediaLibraryService.GetLibraryStatsAsync(userId);
+            
+            ApplyFilters();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error loading library: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private void HandleSearchChange()
+    {
+        ApplyFilters();
+    }
+
+    private void ApplyFilters()
+    {
+        filteredItems = libraryItems.ToList();
+
+        // Search filter
+        if (!string.IsNullOrWhiteSpace(searchQuery))
+        {
+            var query = searchQuery.ToLower();
+            filteredItems = filteredItems.Where(item =>
+                item.Title.ToLower().Contains(query) ||
+                (item.Description != null && item.Description.ToLower().Contains(query)) ||
+                (item.OriginalFileName != null && item.OriginalFileName.ToLower().Contains(query))
+            ).ToList();
+        }
+
+        // Category filter
+        if (!string.IsNullOrWhiteSpace(selectedCategory))
+        {
+            filteredItems = filteredItems.Where(item => item.Category == selectedCategory).ToList();
+        }
+
+        // Sort
+        filteredItems = sortBy switch
+        {
+            "name" => filteredItems.OrderBy(item => item.Title).ToList(),
+            "duration" => filteredItems.OrderByDescending(item => item.DurationSeconds).ToList(),
+            "mostused" => filteredItems.OrderByDescending(item => item.UseCount).ToList(),
+            _ => filteredItems.OrderByDescending(item => item.Created).ToList()
+        };
+    }
+
+    private void ClearFilters()
+    {
+        searchQuery = "";
+        selectedCategory = "";
+        sortBy = "recent";
+        ApplyFilters();
+    }
+
+    private void NavigateToDetails(int itemId)
+    {
+        Navigation.NavigateTo($"/library/{itemId}");
+    }
+
+    private void ShowStats()
+    {
+        showStatsModal = true;
+    }
+    
+    // Delete handlers
+    private void ShowDeleteConfirmation(MediaLibraryItem item)
+    {
+        itemToDelete = item;
+        showDeleteModal = true;
+    }
+    
+    private void CancelDelete()
+    {
+        showDeleteModal = false;
+        itemToDelete = null;
+    }
+    
+    private async Task ConfirmDelete()
+    {
+        if (itemToDelete == null) return;
+        
+        isDeleting = true;
+        try
+        {
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            var userId = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            
+            if (string.IsNullOrEmpty(userId))
+            {
+                ShowError("User not authenticated");
+                return;
+            }
+            
+            var success = await MediaLibraryService.DeleteLibraryItemAsync(itemToDelete.Id, userId);
+            
+            if (success)
+            {
+                ShowSuccess($"'{itemToDelete.Title}' deleted successfully");
+                
+                // Reload library
+                await LoadLibrary();
+            }
+            else
+            {
+                ShowError("Failed to delete item");
+            }
+        }
+        catch (Exception ex)
+        {
+            ShowError($"Error deleting item: {ex.Message}");
+        }
+        finally
+        {
+            isDeleting = false;
+            showDeleteModal = false;
+            itemToDelete = null;
+        }
+    }
+    
+    private void ShowSuccess(string message)
+    {
+        statusMessage = message;
+        isError = false;
+        StateHasChanged();
+        
+        Task.Delay(4000).ContinueWith(_ =>
+        {
+            if (!isError && statusMessage == message)
+            {
+                statusMessage = null;
+                InvokeAsync(StateHasChanged);
+            }
+        });
+    }
+    
+    private void ShowError(string message)
+    {
+        statusMessage = message;
+        isError = true;
+        StateHasChanged();
+        
+        Task.Delay(8000).ContinueWith(_ =>
+        {
+            if (isError && statusMessage == message)
+            {
+                statusMessage = null;
+                InvokeAsync(StateHasChanged);
+            }
+        });
+    }
+}

@@ -26,8 +26,14 @@ public class LinkedAccountsSummaryTests : TestContext
 
         _dbContext = new ApplicationDbContext(options);
 
-        // Register services
-        Services.AddSingleton(_dbContext);
+        // Register IDbContextFactory (required by LinkedAccountsSummary)
+        var dbContextFactoryMock = new Mock<IDbContextFactory<ApplicationDbContext>>();
+        dbContextFactoryMock.Setup(x => x.CreateDbContext())
+            .Returns(_dbContext);
+        dbContextFactoryMock.Setup(x => x.CreateDbContextAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(_dbContext);
+        
+        Services.AddSingleton(dbContextFactoryMock.Object);
         
         // Mock Authentication
         var authState = new AuthenticationState(new ClaimsPrincipal(new ClaimsIdentity(new[]
