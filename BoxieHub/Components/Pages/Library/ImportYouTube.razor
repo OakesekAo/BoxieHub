@@ -107,6 +107,21 @@
                         </div>
 
                         <div class="mb-3">
+                            <label class="form-label">Category *</label>
+                            <select class="form-select" @bind="selectedCategory" disabled="@isProcessing">
+                                <option value="">-- Select Category --</option>
+                                <option value="Music">Music</option>
+                                <option value="Educational">Educational</option>
+                                <option value="Story">Story</option>
+                                <option value="Podcast">Podcast</option>
+                                <option value="Other">Other</option>
+                            </select>
+                            <small class="text-muted">
+                                Choose a category to help organize your library
+                            </small>
+                        </div>
+
+                        <div class="mb-3">
                             <label class="form-label">Description (optional)</label>
                             <textarea class="form-control" 
                                       rows="3" 
@@ -117,7 +132,7 @@
 
                         <button class="btn btn-primary btn-lg" 
                                 @onclick="StartImport" 
-                                disabled="@isProcessing">
+                                disabled="@(isProcessing || string.IsNullOrEmpty(selectedCategory))">
                             @if (isProcessing)
                             {
                                 <span class="spinner-border spinner-border-sm me-2"></span>
@@ -129,6 +144,13 @@
                                 <span>Import to Library</span>
                             }
                         </button>
+                        
+                        @if (string.IsNullOrEmpty(selectedCategory) && !isProcessing)
+                        {
+                            <div class="text-muted small mt-2">
+                                <i class="bi bi-info-circle"></i> Please select a category before importing
+                            </div>
+                        }
                     }
                 </div>
             </div>
@@ -230,16 +252,17 @@
 </div>
 
 @code {
-    private string youtubeUrl = string.Empty;
-    private string customTitle = string.Empty;
-    private string customDescription = string.Empty;
-    private YouTubeVideoInfo? videoInfo;
-    private string? validationError;
-    private bool isLoadingPreview;
-    private bool isProcessing;
-    private List<ImportJob> recentJobs = new();
-    private System.Threading.Timer? debounceTimer;
-    private System.Threading.Timer? pollTimer;
+private string youtubeUrl = string.Empty;
+private string customTitle = string.Empty;
+private string customDescription = string.Empty;
+private string selectedCategory = string.Empty;
+private YouTubeVideoInfo? videoInfo;
+private string? validationError;
+private bool isLoadingPreview;
+private bool isProcessing;
+private List<ImportJob> recentJobs = new();
+private System.Threading.Timer? debounceTimer;
+private System.Threading.Timer? pollTimer;
 
     protected override async Task OnInitializedAsync()
     {
@@ -308,6 +331,12 @@
         if (videoInfo == null || !videoInfo.IsValid)
             return;
 
+        if (string.IsNullOrEmpty(selectedCategory))
+        {
+            validationError = "Please select a category";
+            return;
+        }
+
         isProcessing = true;
         
         try
@@ -321,17 +350,18 @@
                 return;
             }
 
-            // Create job in database
+            // Create job in database with category
             var job = await ImportJobService.CreateYouTubeImportJobAsync(
                 userId,
                 youtubeUrl,
                 customTitle,
-                customDescription);
+                customDescription,
+                selectedCategory);
 
             // Enqueue for background processing
             await JobProcessor.EnqueueJobAsync(job.Id);
 
-            Logger.LogInformation("Started YouTube import job {JobId}", job.Id);
+            Logger.LogInformation("Started YouTube import job {JobId} with category {Category}", job.Id, selectedCategory);
 
             // Add to recent jobs list
             recentJobs.Insert(0, job);
@@ -343,6 +373,7 @@
             youtubeUrl = string.Empty;
             customTitle = string.Empty;
             customDescription = string.Empty;
+            selectedCategory = string.Empty;
             videoInfo = null;
             validationError = null;
         }

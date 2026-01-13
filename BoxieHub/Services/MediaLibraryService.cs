@@ -15,6 +15,7 @@ public interface IMediaLibraryService
     Task<List<MediaLibraryItem>> GetUserLibraryAsync(string userId, CancellationToken ct = default);
     Task<MediaLibraryItem?> GetLibraryItemAsync(int id, string userId, CancellationToken ct = default);
     Task<MediaLibraryItem> AddToLibraryAsync(string userId, Stream audioStream, MediaLibraryItemDto dto, StorageProvider? provider = null, int? storageAccountId = null, CancellationToken ct = default);
+    Task<MediaLibraryItem> AddExistingFileToLibraryAsync(string userId, Guid fileUploadId, MediaLibraryItemDto dto, CancellationToken ct = default);
     Task<bool> UpdateLibraryItemAsync(int id, string userId, MediaLibraryItemDto dto, CancellationToken ct = default);
     Task<bool> DeleteLibraryItemAsync(int id, string userId, CancellationToken ct = default);
     
@@ -174,6 +175,59 @@ public class MediaLibraryService : IMediaLibraryService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error adding media item to library for user {UserId}", userId);
+            throw;
+        }
+    }
+
+    public async Task<MediaLibraryItem> AddExistingFileToLibraryAsync(
+        string userId,
+        Guid fileUploadId,
+        MediaLibraryItemDto dto,
+        CancellationToken ct = default)
+    {
+        await using var dbContext = await _dbContextFactory.CreateDbContextAsync(ct);
+
+        try
+        {
+            // Verify FileUpload exists
+            var fileUpload = await dbContext.FileUploads.FindAsync(new object[] { fileUploadId }, ct);
+            if (fileUpload == null)
+            {
+                throw new InvalidOperationException($"FileUpload {fileUploadId} not found");
+            }
+
+            _logger.LogInformation("Reusing existing file {FileId} for new library item '{Title}' (user: {UserId})",
+                fileUploadId, dto.Title, userId);
+
+            // Create MediaLibraryItem referencing existing file
+            var item = new MediaLibraryItem
+            {
+                UserId = userId,
+                Title = dto.Title,
+                Description = dto.Description,
+                FileUploadId = fileUpload.Id,
+                DurationSeconds = dto.DurationSeconds,
+                FileSizeBytes = fileUpload.FileSizeBytes,
+                ContentType = fileUpload.ContentType ?? dto.ContentType,
+                OriginalFileName = dto.OriginalFileName,
+                Tags = dto.Tags,
+                Category = dto.Category,
+                UseCount = 0,
+                Created = DateTimeOffset.UtcNow
+            };
+
+            dbContext.MediaLibraryItems.Add(item);
+            await dbContext.SaveChangesAsync(ct);
+
+            _logger.LogInformation("Added library item {ItemId} reusing file {FileId} for user {UserId}",
+                item.Id, fileUploadId, userId);
+
+            return item;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error adding library item with existing file {FileId} for user {UserId}",
+                fileUploadId, userId);
             throw;
         }
     }

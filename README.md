@@ -1,17 +1,8 @@
-<<<<<<< Updated upstream
-# BoxieHub
-# BoxieHub 🎵📦
-
-**Self-hosted media management platform for Toniebox Creative Tonies**
-
-BoxieHub is a modern, self-hosted web application that simplifies managing audio content for your Toniebox Creative Tonies. Import from YouTube, organize your media library, and sync content to your Tonies—all from one beautiful interface.
-=======
 # BoxieHub ????
 
 **Self-hosted media management platform for Toniebox Creative Tonies**
 
 BoxieHub is a modern, self-hosted web application that simplifies managing audio content for your Toniebox Creative Tonies. Import from YouTube, organize your media library, and sync content to your Tonies�all from one beautiful interface.
->>>>>>> Stashed changes
 
 [![.NET 8](https://img.shields.io/badge/.NET-8.0-512BD4?logo=dotnet)](https://dotnet.microsoft.com/)
 [![Blazor](https://img.shields.io/badge/Blazor-Interactive-512BD4?logo=blazor)](https://dotnet.microsoft.com/apps/aspnet/web-apps/blazor)
@@ -20,57 +11,35 @@ BoxieHub is a modern, self-hosted web application that simplifies managing audio
 
 ---
 
-<<<<<<< Updated upstream
-## ✨ Features
-
-### 🎵 **Media Library**
-=======
 ## ? Features
 
 ### ?? **Media Library**
->>>>>>> Stashed changes
 - **Import from YouTube** - Extract audio from any YouTube video (max 90 minutes)
 - **Playlist Import** - Batch import up to 50 videos from YouTube playlists
 - **Direct Upload** - Upload your own audio files (MP3, M4A, OGG, WAV)
 - **Smart Organization** - Tag, categorize, and search your media
 - **Reusable Content** - Use the same audio on multiple Tonies
 
-<<<<<<< Updated upstream
-### 🧸 **Tonie Management**
-=======
 ### ?? **Tonie Management**
->>>>>>> Stashed changes
 - **Multi-Account Support** - Connect multiple Toniebox accounts
 - **Automatic Sync** - Pulls your Tonies, households, and chapters
 - **Custom Images** - Upload custom artwork for your Tonies
 - **Chapter Management** - Edit titles, reorder, delete chapters
 - **Real-time Status** - See storage usage and transcoding status
 
-<<<<<<< Updated upstream
-### ☁️ **Flexible Storage**
-=======
 ### ?? **Flexible Storage**
->>>>>>> Stashed changes
 - **Database Storage** - Store small files directly in PostgreSQL
 - **S3-Compatible Storage** - MinIO, Railway S3, AWS S3 support
 - **External Cloud** - Dropbox and Google Drive integration (coming soon)
 - **User Preferences** - Choose default storage per user
 
-<<<<<<< Updated upstream
-### 🔒 **Security & Privacy**
-=======
 ### ?? **Security & Privacy**
->>>>>>> Stashed changes
 - **Self-Hosted** - Your data stays on your server
 - **Encrypted Credentials** - Tonie account passwords encrypted with ASP.NET Data Protection
 - **Multi-User Support** - Each user has isolated content and settings
 - **Role-Based Access** - Admin and user roles
 
-<<<<<<< Updated upstream
-### 🚀 **Modern Architecture**
-=======
 ### ?? **Modern Architecture**
->>>>>>> Stashed changes
 - **Blazor Server + WebAssembly** - Fast, interactive UI
 - **Background Processing** - YouTube imports run asynchronously
 - **Smart Caching** - Database-first with API sync fallback
@@ -78,11 +47,7 @@ BoxieHub is a modern, self-hosted web application that simplifies managing audio
 
 ---
 
-<<<<<<< Updated upstream
-## 📸 Screenshots
-=======
 ## ?? Screenshots
->>>>>>> Stashed changes
 
 ### Media Library
 <details>
@@ -110,11 +75,7 @@ BoxieHub is a modern, self-hosted web application that simplifies managing audio
 
 ---
 
-<<<<<<< Updated upstream
-## 🚀 Quick Start
-=======
 ## ?? Quick Start
->>>>>>> Stashed changes
 
 ### Prerequisites
 
@@ -172,11 +133,7 @@ BoxieHub is a modern, self-hosted web application that simplifies managing audio
 
 ---
 
-<<<<<<< Updated upstream
-## 🔧 Configuration
-=======
 ## ?? Configuration
->>>>>>> Stashed changes
 
 ### Database (Required)
 
@@ -208,17 +165,10 @@ For external media storage, configure S3-compatible settings:
 ```
 
 **Supported S3 Providers:**
-<<<<<<< Updated upstream
-- ✅ MinIO (self-hosted)
-- ✅ Railway S3
-- ✅ AWS S3
-- ✅ Any S3-compatible service
-=======
 - ? MinIO (self-hosted)
 - ? Railway S3
 - ? AWS S3
 - ? Any S3-compatible service
->>>>>>> Stashed changes
 
 ### User Secrets (Development)
 
@@ -232,11 +182,7 @@ dotnet user-secrets set "S3Storage:SecretKey" "your-secret-key"
 
 ---
 
-<<<<<<< Updated upstream
-## 📚 Documentation
-=======
 ## ?? Documentation
->>>>>>> Stashed changes
 
 ### User Guides
 - [Getting Started](docs/USER_GUIDE.md) *(coming soon)*
@@ -257,90 +203,55 @@ dotnet user-secrets set "S3Storage:SecretKey" "your-secret-key"
 
 ---
 
-<<<<<<< Updated upstream
-## 🗺️ Roadmap
-
-### ✅ Phase 1: Foundation (Complete)
-=======
 ## ??? Roadmap
 
 ### ? Phase 1: Foundation (Complete)
->>>>>>> Stashed changes
 - [x] User authentication & authorization
 - [x] PostgreSQL database integration
 - [x] Toniebox account management
 - [x] Basic Tonie sync from Tonie Cloud API
 
-<<<<<<< Updated upstream
-### ✅ Phase 2: Media Library (Complete)
-=======
 ### ? Phase 2: Media Library (Complete)
->>>>>>> Stashed changes
 - [x] Upload audio files
 - [x] Media library with tags & categories
 - [x] S3-compatible storage integration
 - [x] Reusable content system
 
-<<<<<<< Updated upstream
-### ✅ Phase 3: YouTube Import (Complete)
-=======
 ### ? Phase 3: YouTube Import (Complete)
->>>>>>> Stashed changes
 - [x] Single video import
 - [x] Playlist batch import
 - [x] Background processing
 - [x] Progress tracking
 
-<<<<<<< Updated upstream
-### 🚧 Phase 4: Advanced Features (In Progress)
-=======
 ### ?? Phase 4: Advanced Features (In Progress)
->>>>>>> Stashed changes
 - [x] Custom Tonie images
 - [x] Chapter editing & reordering
 - [ ] Podcast RSS feed import
 - [ ] Direct URL audio import
 - [ ] Bulk operations
 
-<<<<<<< Updated upstream
-### 📋 Phase 5: Cloud Storage (Planned)
-=======
 ### ?? Phase 5: Cloud Storage (Planned)
->>>>>>> Stashed changes
 - [ ] Dropbox integration
 - [ ] Google Drive integration
 - [ ] OneDrive support
 - [ ] Storage quota management
 
-<<<<<<< Updated upstream
-### 🎯 Phase 6: Polish & UX (Planned)
-=======
 ### ?? Phase 6: Polish & UX (Planned)
->>>>>>> Stashed changes
 - [ ] Mobile app (MAUI)
 - [ ] Dark mode
 - [ ] Advanced search & filters
 - [ ] Audio editing (trim, normalize)
 - [ ] Batch audio processing
 
-<<<<<<< Updated upstream
-### 🌐 Phase 7: Community (Future)
-
-=======
 ### ?? Phase 7: Community (Future)
 - [ ] Shared media library (opt-in)
->>>>>>> Stashed changes
 - [ ] Content recommendations
 - [ ] User profiles & avatars
 - [ ] Activity feed
 
 ---
 
-<<<<<<< Updated upstream
-## 🏗️ Architecture
-=======
 ## ??? Architecture
->>>>>>> Stashed changes
 
 ### Tech Stack
 
@@ -362,36 +273,13 @@ dotnet user-secrets set "S3Storage:SecretKey" "your-secret-key"
 - ASP.NET Data Protection (encryption)
 
 **External APIs:**
-<<<<<<< Updated upstream
-
-=======
 - Tonie Cloud API (official)
->>>>>>> Stashed changes
 - YoutubeExplode (video/playlist metadata)
 
 ### Project Structure
 
 ```
 BoxieHub/
-<<<<<<< Updated upstream
-├── BoxieHub/                    # Main web application
-│   ├── Components/              # Blazor components
-│   │   ├── Pages/              # Routable pages
-│   │   ├── Layout/             # Layout components
-│   │   └── Account/            # Auth components
-│   ├── Controllers/            # API controllers
-│   ├── Data/                   # EF Core context
-│   ├── Models/                 # Domain models
-│   ├── Services/               # Business logic
-│   │   ├── BoxieCloud/        # Tonie API client
-│   │   ├── Import/            # YouTube import
-│   │   ├── Storage/           # File storage
-│   │   └── Sync/              # Background sync
-│   └── Migrations/            # EF migrations
-├── BoxieHub.Client/           # Blazor WebAssembly
-├── BoxieHub.Tests/            # Unit & integration tests
-└── docs/                      # Documentation
-=======
 ??? BoxieHub/                    # Main web application
 ?   ??? Components/              # Blazor components
 ?   ?   ??? Pages/              # Routable pages
@@ -409,16 +297,11 @@ BoxieHub/
 ??? BoxieHub.Client/           # Blazor WebAssembly
 ??? BoxieHub.Tests/            # Unit & integration tests
 ??? docs/                      # Documentation
->>>>>>> Stashed changes
 ```
 
 ---
 
-<<<<<<< Updated upstream
-## 🧪 Testing
-=======
 ## ?? Testing
->>>>>>> Stashed changes
 
 ### Run Unit Tests
 ```bash
@@ -432,20 +315,6 @@ dotnet test --filter Category=Integration
 ```
 
 ### Test Coverage
-<<<<<<< Updated upstream
-- ✅ Unit tests for services
-- ✅ Integration tests for workflows
-- ✅ Controller tests with mocks
-- 🚧 E2E tests (coming soon)
-
----
-
-## 🤝 Contributing
-
-We welcome contributions! Here's how you can help:
-
-### 🐛 Report Bugs
-=======
 - ? Unit tests for services
 - ? Integration tests for workflows
 - ? Controller tests with mocks
@@ -458,36 +327,23 @@ We welcome contributions! Here's how you can help:
 We welcome contributions! Here's how you can help:
 
 ### ?? Report Bugs
->>>>>>> Stashed changes
 - Use the [Issue Tracker](https://github.com/OakesekAo/BoxieHub/issues)
 - Include steps to reproduce
 - Mention your environment (.NET version, OS, browser)
 
-<<<<<<< Updated upstream
-### 💡 Suggest Features
-=======
 ### ?? Suggest Features
->>>>>>> Stashed changes
 - Open a [Feature Request](https://github.com/OakesekAo/BoxieHub/issues/new?labels=enhancement)
 - Describe the use case
 - Explain expected behavior
 
-<<<<<<< Updated upstream
-### 🔧 Submit Pull Requests
-=======
 ### ?? Submit Pull Requests
->>>>>>> Stashed changes
 1. Fork the repository
 2. Create a feature branch (`git checkout -b feature/amazing-feature`)
 3. Commit your changes (`git commit -m 'Add amazing feature'`)
 4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
 
-<<<<<<< Updated upstream
-### 📝 Development Setup
-=======
 ### ?? Development Setup
->>>>>>> Stashed changes
 ```bash
 # Clone your fork
 git clone https://github.com/YOUR_USERNAME/BoxieHub.git
@@ -510,21 +366,13 @@ dotnet test
 
 ---
 
-<<<<<<< Updated upstream
-## 📜 License
-=======
 ## ?? License
->>>>>>> Stashed changes
 
 This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) file for details.
 
 ---
 
-<<<<<<< Updated upstream
-## 🙏 Acknowledgments
-=======
 ## ?? Acknowledgments
->>>>>>> Stashed changes
 
 ### Built With
 - [ASP.NET Core](https://dotnet.microsoft.com/apps/aspnet) - Microsoft
@@ -537,11 +385,7 @@ This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) 
 
 ### Inspired By
 - [Tonie Cloud API](https://api.tonie.cloud/) - Official Toniebox API
-<<<<<<< Updated upstream
-- [tonies®](https://tonies.com/) - For creating an amazing audio system for kids
-=======
 - [tonies�](https://tonies.com/) - For creating an amazing audio system for kids
->>>>>>> Stashed changes
 
 ### Special Thanks
 - To all contributors who help make BoxieHub better
@@ -550,15 +394,9 @@ This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) 
 
 ---
 
-<<<<<<< Updated upstream
-## ⚠️ Disclaimer
-
-**BoxieHub is an independent project and is not affiliated with, endorsed by, or sponsored by Boxine GmbH or tonies®.**
-=======
 ## ?? Disclaimer
 
 **BoxieHub is an independent project and is not affiliated with, endorsed by, or sponsored by Boxine GmbH or tonies�.**
->>>>>>> Stashed changes
 
 - This application uses the official Tonie Cloud API
 - You must have a valid Toniebox account to use this application
@@ -568,23 +406,6 @@ This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) 
 
 ---
 
-<<<<<<< Updated upstream
-## 📞 Contact & Support
-
-### Need Help?
-- 📖 [Documentation](docs/) - Read the guides
-- 💬 [Discussions](https://github.com/OakesekAo/BoxieHub/discussions) - Ask questions
-- 🐛 [Issues](https://github.com/OakesekAo/BoxieHub/issues) - Report bugs
-
-### Stay Updated
-- ⭐ Star this repository to show support
-- 👀 Watch for updates and new releases
-- 🔔 Subscribe to release notifications
-
----
-
-## 📊 Project Stats
-=======
 ## ?? Contact & Support
 
 ### Need Help?
@@ -600,7 +421,6 @@ This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) 
 ---
 
 ## ?? Project Stats
->>>>>>> Stashed changes
 
 ![GitHub stars](https://img.shields.io/github/stars/OakesekAo/BoxieHub?style=social)
 ![GitHub forks](https://img.shields.io/github/forks/OakesekAo/BoxieHub?style=social)
@@ -613,16 +433,8 @@ This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) 
 
 <div align="center">
 
-<<<<<<< Updated upstream
-**Made with ❤️ for parents and their little ones**
-
-[⬆ Back to Top](#boxiehub-)
-
-</div>
-=======
 **Made with ?? for parents and their little ones**
 
 [? Back to Top](#boxiehub-)
 
 </div>
->>>>>>> Stashed changes

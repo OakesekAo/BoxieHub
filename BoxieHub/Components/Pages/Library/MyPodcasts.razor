@@ -1,0 +1,343 @@
+@rendermode InteractiveServer
+@page "/library/podcasts"
+@using BoxieHub.Services.Import
+@using BoxieHub.Models
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Authorization
+@inject ISavedPodcastService SavedPodcastService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Navigation
+@inject ILogger<MyPodcasts> Logger
+@attribute [Authorize]
+
+<PageTitle>My Podcasts - BoxieHub</PageTitle>
+
+<div class="container mt-4">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="/library">Library</a></li>
+            <li class="breadcrumb-item active">My Podcasts</li>
+        </ol>
+    </nav>
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2><i class="bi bi-broadcast"></i> My Podcasts</h2>
+        <a href="/library/import/podcast" class="btn btn-primary">
+            <i class="bi bi-plus-circle"></i> Subscribe to New Podcast
+        </a>
+    </div>
+
+    @if (isLoading)
+    {
+        <div class="text-center py-5">
+            <div class="spinner-border text-primary"></div>
+            <p class="mt-2 text-muted">Loading your podcasts...</p>
+        </div>
+    }
+    else if (!subscriptions.Any())
+    {
+        <div class="card shadow-sm">
+            <div class="card-body text-center py-5">
+                <i class="bi bi-broadcast" style="font-size: 4rem; color: #ccc;"></i>
+                <h4 class="mt-3">No Podcasts Yet</h4>
+                <p class="text-muted">Subscribe to podcasts to see episodes and import audio to your library.</p>
+                <a href="/library/import/podcast" class="btn btn-primary mt-3">
+                    <i class="bi bi-plus-circle"></i> Subscribe to Your First Podcast
+                </a>
+            </div>
+        </div>
+    }
+    else
+    {
+        <!-- Filter Tabs -->
+        <ul class="nav nav-tabs mb-3">
+            <li class="nav-item">
+                <a class="nav-link @(showFavoritesOnly ? "" : "active")" 
+                   @onclick="() => ShowAll()" 
+                   style="cursor: pointer;">
+                    All (@subscriptions.Count)
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link @(showFavoritesOnly ? "active" : "")" 
+                   @onclick="() => ShowFavorites()" 
+                   style="cursor: pointer;">
+                    <i class="bi bi-star-fill text-warning"></i> Favorites (@subscriptions.Count(s => s.IsFavorite))
+                </a>
+            </li>
+        </ul>
+
+        <!-- Podcast Grid -->
+        <div class="row g-4">
+            @foreach (var subscription in GetFilteredSubscriptions())
+            {
+                <div class="col-md-6 col-lg-4">
+                    <div class="card h-100 shadow-sm podcast-card" style="cursor: pointer;" 
+                         @onclick="() => ViewPodcast(subscription.SavedPodcastId)">
+                        <div class="position-relative">
+                            <img src="@(subscription.SavedPodcast?.ImageUrl ?? "/images/podcast-placeholder.png")" 
+                                 class="card-img-top" 
+                                 alt="@subscription.SavedPodcast?.Title"
+                                 style="height: 250px; object-fit: cover;">
+                            
+                            <!-- Favorite Badge -->
+                            @if (subscription.IsFavorite)
+                            {
+                                <span class="badge bg-warning position-absolute top-0 end-0 m-2">
+                                    <i class="bi bi-star-fill"></i> Favorite
+                                </span>
+                            }
+                        </div>
+                        
+                        <div class="card-body d-flex flex-column">
+                            <h5 class="card-title">@subscription.SavedPodcast?.Title</h5>
+                            <p class="card-text text-muted small flex-grow-1">
+                                @if (subscription.SavedPodcast?.Description?.Length > 120)
+                                {
+                                    @subscription.SavedPodcast.Description.Substring(0, 120)<text>...</text>
+                                }
+                                else
+                                {
+                                    @subscription.SavedPodcast?.Description
+                                }
+                            </p>
+                            
+                            <div class="d-flex justify-content-between align-items-center mt-2">
+                                <small class="text-muted">
+                                    <i class="bi bi-person"></i> @subscription.SavedPodcast?.Author
+                                </small>
+                                <small class="text-muted">
+                                    <i class="bi bi-collection-play"></i> @subscription.SavedPodcast?.TotalEpisodes episodes
+                                </small>
+                            </div>
+                            
+                            <div class="mt-3">
+                                <button class="btn btn-sm btn-outline-primary w-100" 
+                                        @onclick:stopPropagation="true"
+                                        @onclick="() => ViewPodcast(subscription.SavedPodcastId)">
+                                    <i class="bi bi-music-note-list"></i> View Episodes
+                                </button>
+                            </div>
+                            
+                            <div class="d-flex gap-2 mt-2">
+                                <button class="btn btn-sm btn-outline-warning flex-fill" 
+                                        @onclick:stopPropagation="true"
+                                        @onclick="() => ToggleFavorite(subscription)">
+                                    <i class="bi @(subscription.IsFavorite ? "bi-star-fill" : "bi-star")"></i>
+                                </button>
+                                <button class="btn btn-sm btn-outline-info flex-fill" 
+                                        @onclick:stopPropagation="true"
+                                        @onclick="() => RefreshPodcast(subscription.SavedPodcastId)">
+                                    <i class="bi bi-arrow-clockwise"></i>
+                                </button>
+                                <button class="btn btn-sm btn-outline-danger flex-fill" 
+                                        @onclick:stopPropagation="true"
+                                        @onclick="() => ConfirmUnsubscribe(subscription)">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </div>
+                            
+                            @if (subscription.LastAccessed.HasValue)
+                            {
+                                <small class="text-muted mt-2">
+                                    Last accessed: @subscription.LastAccessed.Value.ToString("MMM dd, yyyy")
+                                </small>
+                            }
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+
+    @if (!string.IsNullOrEmpty(errorMessage))
+    {
+        <div class="alert alert-danger mt-3">
+            <i class="bi bi-x-circle"></i> @errorMessage
+        </div>
+    }
+</div>
+
+<!-- Confirm Unsubscribe Modal -->
+@if (subscriptionToDelete != null)
+{
+    <div class="modal show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Confirm Unsubscribe</h5>
+                    <button type="button" class="btn-close" @onclick="CancelUnsubscribe"></button>
+                </div>
+                <div class="modal-body">
+                    <p>Are you sure you want to unsubscribe from <strong>@subscriptionToDelete.SavedPodcast?.Title</strong>?</p>
+                    <p class="text-muted small">
+                        This will not delete any episodes you've already imported to your library.
+                        The podcast and episodes will remain available for other users.
+                    </p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="CancelUnsubscribe">Cancel</button>
+                    <button type="button" class="btn btn-danger" @onclick="UnsubscribeConfirmed">
+                        <i class="bi bi-trash"></i> Unsubscribe
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    .podcast-card {
+        transition: transform 0.2s, box-shadow 0.2s;
+    }
+    
+    .podcast-card:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15) !important;
+    }
+</style>
+
+@code {
+    private List<PodcastSubscription> subscriptions = new();
+    private bool isLoading = true;
+    private bool showFavoritesOnly = false;
+    private string? errorMessage;
+    private PodcastSubscription? subscriptionToDelete;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadSubscriptions();
+    }
+
+    private async Task LoadSubscriptions()
+    {
+        isLoading = true;
+        errorMessage = null;
+
+        try
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var userId = authState.User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+            if (!string.IsNullOrEmpty(userId))
+            {
+                subscriptions = await SavedPodcastService.GetUserSubscriptionsAsync(userId);
+                Logger.LogInformation("Loaded {Count} podcast subscriptions for user {UserId}", 
+                    subscriptions.Count, userId);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to load podcast subscriptions");
+            errorMessage = "Failed to load podcasts. Please try again.";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private void ShowAll()
+    {
+        showFavoritesOnly = false;
+    }
+
+    private void ShowFavorites()
+    {
+        showFavoritesOnly = true;
+    }
+
+    private IEnumerable<PodcastSubscription> GetFilteredSubscriptions()
+    {
+        if (showFavoritesOnly)
+            return subscriptions.Where(s => s.IsFavorite);
+        
+        return subscriptions;
+    }
+
+    private void ViewPodcast(int podcastId)
+    {
+        Navigation.NavigateTo($"/library/podcasts/{podcastId}");
+    }
+
+    private async Task ToggleFavorite(PodcastSubscription subscription)
+    {
+        try
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var userId = authState.User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+            if (!string.IsNullOrEmpty(userId))
+            {
+                await SavedPodcastService.ToggleFavoriteAsync(subscription.SavedPodcastId, userId);
+                subscription.IsFavorite = !subscription.IsFavorite;
+                Logger.LogInformation("Toggled favorite for podcast {PodcastId}: {IsFavorite}", 
+                    subscription.SavedPodcastId, subscription.IsFavorite);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to toggle favorite for podcast {PodcastId}", subscription.SavedPodcastId);
+            errorMessage = "Failed to update favorite status.";
+        }
+    }
+
+    private async Task RefreshPodcast(int podcastId)
+    {
+        try
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var userId = authState.User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+            if (!string.IsNullOrEmpty(userId))
+            {
+                await SavedPodcastService.RefreshPodcastAsync(podcastId, userId);
+                await LoadSubscriptions(); // Reload to show updated data
+                Logger.LogInformation("Refreshed podcast {PodcastId}", podcastId);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to refresh podcast {PodcastId}", podcastId);
+            errorMessage = "Failed to refresh podcast. Please try again.";
+        }
+    }
+
+    private void ConfirmUnsubscribe(PodcastSubscription subscription)
+    {
+        subscriptionToDelete = subscription;
+    }
+
+    private void CancelUnsubscribe()
+    {
+        subscriptionToDelete = null;
+    }
+
+    private async Task UnsubscribeConfirmed()
+    {
+        if (subscriptionToDelete == null) return;
+
+        try
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var userId = authState.User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+            if (!string.IsNullOrEmpty(userId))
+            {
+                await SavedPodcastService.UnsubscribeAsync(subscriptionToDelete.SavedPodcastId, userId);
+                subscriptions.Remove(subscriptionToDelete);
+                Logger.LogInformation("Unsubscribed from podcast {PodcastId}", subscriptionToDelete.SavedPodcastId);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to unsubscribe from podcast {PodcastId}", 
+                subscriptionToDelete?.SavedPodcastId);
+            errorMessage = "Failed to unsubscribe. Please try again.";
+        }
+        finally
+        {
+            subscriptionToDelete = null;
+        }
+    }
+}

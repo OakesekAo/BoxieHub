@@ -33,6 +33,12 @@ public class ImportJob
     public float? SourceDurationSeconds { get; set; }
     
     /// <summary>
+    /// Category for the imported item (e.g., "Music", "Podcast", "Educational")
+    /// </summary>
+    [MaxLength(50)]
+    public string? Category { get; set; }
+    
+    /// <summary>
     /// Current status as string (for database storage)
     /// </summary>
     [Required]

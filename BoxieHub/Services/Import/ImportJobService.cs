@@ -12,15 +12,18 @@ public class ImportJobService : IImportJobService
 {
     private readonly IDbContextFactory<ApplicationDbContext> _dbContextFactory;
     private readonly IYouTubeImportService _youtubeService;
+    private readonly IPodcastImportService _podcastService;
     private readonly ILogger<ImportJobService> _logger;
 
     public ImportJobService(
         IDbContextFactory<ApplicationDbContext> dbContextFactory,
         IYouTubeImportService youtubeService,
+        IPodcastImportService podcastService,
         ILogger<ImportJobService> logger)
     {
         _dbContextFactory = dbContextFactory;
         _youtubeService = youtubeService;
+        _podcastService = podcastService;
         _logger = logger;
     }
 
@@ -29,6 +32,7 @@ public class ImportJobService : IImportJobService
         string youtubeUrl,
         string? customTitle = null,
         string? customDescription = null,
+        string? category = null,
         CancellationToken ct = default)
     {
         _logger.LogInformation("Creating YouTube import job for user {UserId}: {Url}", 
@@ -79,6 +83,7 @@ public class ImportJobService : IImportJobService
             SourceDescription = description,
             SourceThumbnailUrl = thumbnailUrl,
             SourceDurationSeconds = (float)videoInfo.Duration.TotalSeconds,
+            Category = category ?? "Other",
             StatusEnum = ImportJobStatus.Pending,
             StatusMessage = "Waiting to start...",
             Created = DateTimeOffset.UtcNow
@@ -87,8 +92,8 @@ public class ImportJobService : IImportJobService
         dbContext.ImportJobs.Add(job);
         await dbContext.SaveChangesAsync(ct);
 
-        _logger.LogInformation("Created import job {JobId} for video: {Title}", 
-            job.Id, videoInfo.Title);
+        _logger.LogInformation("Created import job {JobId} for video: {Title} (Category: {Category})", 
+            job.Id, videoInfo.Title, job.Category);
 
         return job;
     }
@@ -108,7 +113,7 @@ public class ImportJobService : IImportJobService
         {
             try
             {
-                var job = await CreateYouTubeImportJobAsync(userId, url, null, null, ct);
+                var job = await CreateYouTubeImportJobAsync(userId, url, null, null, null, ct);
                 jobs.Add(job);
             }
             catch (Exception ex)
@@ -178,5 +183,58 @@ public class ImportJobService : IImportJobService
         _logger.LogInformation("Cancelled import job {JobId}", jobId);
         
         return true;
+    }
+    
+    public async Task<ImportJob> CreatePodcastImportJobAsync(
+        string userId,
+        string feedUrl,
+        PodcastEpisode episode,
+        CancellationToken ct = default)
+    {
+        _logger.LogInformation("Creating podcast import job for user {UserId}: {Title}",
+            userId, episode.Title);
+
+        await using var dbContext = await _dbContextFactory.CreateDbContextAsync(ct);
+
+        // Truncate fields to fit database constraints
+        var title = episode.Title;
+        if (title?.Length > 500)
+        {
+            title = title.Substring(0, 497) + "...";
+        }
+
+        var description = episode.Description;
+        if (description?.Length > 2000)
+        {
+            description = description.Substring(0, 1997) + "...";
+        }
+
+        var imageUrl = episode.ImageUrl;
+        if (imageUrl?.Length > 1024)
+        {
+            imageUrl = imageUrl.Substring(0, 1024);
+        }
+
+        var job = new ImportJob
+        {
+            UserId = userId,
+            Source = ImportSource.Podcast,
+            SourceUrl = episode.AudioUrl,
+            SourceTitle = title,
+            SourceDescription = description,
+            SourceThumbnailUrl = imageUrl,
+            SourceDurationSeconds = (float)episode.Duration.TotalSeconds,
+            StatusEnum = ImportJobStatus.Pending,
+            StatusMessage = "Waiting to start...",
+            Created = DateTimeOffset.UtcNow
+        };
+
+        dbContext.ImportJobs.Add(job);
+        await dbContext.SaveChangesAsync(ct);
+
+        _logger.LogInformation("Created podcast import job {JobId} for episode: {Title}",
+            job.Id, episode.Title);
+
+        return job;
     }
 }

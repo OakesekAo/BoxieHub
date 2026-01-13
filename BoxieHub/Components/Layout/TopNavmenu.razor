@@ -32,10 +32,34 @@
                             </NavLink>
                         </li>
                         <li class="nav-item">
-                            <NavLink class="nav-link" href="library/import/youtube">
-                                <i class="bi bi-youtube"></i>
-                                <span>Import from YouTube</span>
+                            <NavLink class="nav-link" href="library/podcasts">
+                                <i class="bi bi-broadcast"></i>
+                                <span>My Podcasts</span>
                             </NavLink>
+                        </li>
+                        <li class="nav-item dropdown">
+                            <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown">
+                                <i class="bi bi-plus-circle"></i>
+                                <span>Import Audio</span>
+                            </a>
+                            <ul class="dropdown-menu">
+                                <li>
+                                    <NavLink class="dropdown-item" href="library/import/youtube">
+                                        <i class="bi bi-youtube text-danger"></i> YouTube
+                                    </NavLink>
+                                </li>
+                                <li>
+                                    <NavLink class="dropdown-item" href="library/import/podcast">
+                                        <i class="bi bi-broadcast text-info"></i> Podcast RSS
+                                    </NavLink>
+                                </li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li>
+                                    <NavLink class="dropdown-item" href="library/upload">
+                                        <i class="bi bi-upload text-success"></i> Upload File
+                                    </NavLink>
+                                </li>
+                            </ul>
                         </li>
                         <li class="nav-item dropdown">
                             <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown">

@@ -1,0 +1,70 @@
+@using BoxieHub.Models
+
+<div class="card shadow-sm mb-4">
+    <div class="row g-0">
+        <div class="col-md-3">
+            <img src="@(Subscription.SavedPodcast?.ImageUrl ?? "/images/podcast-placeholder.png")" 
+                 class="img-fluid rounded-start" 
+                 alt="@Subscription.SavedPodcast?.Title"
+                 style="max-height: 300px; width: 100%; object-fit: cover;">
+        </div>
+        <div class="col-md-9">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start">
+                    <h2>
+                        @Subscription.SavedPodcast?.Title
+                        @if (Subscription.IsFavorite)
+                        {
+                            <span class="badge bg-warning ms-2">
+                                <i class="bi bi-star-fill"></i> Favorite
+                            </span>
+                        }
+                    </h2>
+                    <button class="btn btn-outline-info" @onclick="OnRefresh" disabled="@IsRefreshing">
+                        @if (IsRefreshing)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1"></span>
+                        }
+                        <i class="bi bi-arrow-clockwise"></i> Refresh Feed
+                    </button>
+                </div>
+                
+                <p class="text-muted">
+                    <i class="bi bi-person"></i> @Subscription.SavedPodcast?.Author
+                </p>
+                
+                <p>@Subscription.SavedPodcast?.Description</p>
+                
+                <div class="d-flex gap-3 mt-3">
+                    <span class="badge bg-primary">
+                        <i class="bi bi-collection-play"></i> @Subscription.SavedPodcast?.TotalEpisodes Episodes
+                    </span>
+                    @if (Subscription.SavedPodcast?.LastFetched != null)
+                    {
+                        <span class="badge bg-secondary">
+                            Last updated: @Subscription.SavedPodcast.LastFetched.Value.ToString("MMM dd, yyyy")
+                        </span>
+                    }
+                </div>
+                
+                @if (Subscription.Notes != null)
+                {
+                    <div class="mt-3">
+                        <small class="text-muted"><i class="bi bi-sticky"></i> Note: @Subscription.Notes</small>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public PodcastSubscription Subscription { get; set; } = default!;
+
+    [Parameter]
+    public EventCallback OnRefresh { get; set; }
+
+    [Parameter]
+    public bool IsRefreshing { get; set; }
+}

@@ -1,0 +1,682 @@
+@page "/library/import/podcast"
+@rendermode InteractiveServer
+@using BoxieHub.Services.Import
+@using BoxieHub.Models
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Authorization
+@inject IPodcastImportService PodcastService
+@inject ISavedPodcastService SavedPodcastService
+@inject IImportJobService ImportJobService
+@inject ImportJobProcessor JobProcessor
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Navigation
+@inject ILogger<ImportPodcast> Logger
+@attribute [Authorize]
+@implements IDisposable
+
+<PageTitle>Import from Podcast - BoxieHub</PageTitle>
+
+<div class="container mt-4">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="/library">Library</a></li>
+            <li class="breadcrumb-item active">Import from Podcast</li>
+        </ol>
+    </nav>
+
+    <div class="row">
+        <div class="col-lg-8">
+            <div class="card shadow-sm">
+                <div class="card-header bg-info text-white">
+                    <h4 class="mb-0">
+                        <i class="bi bi-broadcast"></i> Import from Podcast RSS Feed
+                    </h4>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label class="form-label">Podcast RSS Feed URL *</label>
+                        <input type="text" 
+                               class="form-control @(validationError != null ? "is-invalid" : "")" 
+                               @bind="rssUrl"
+                               @oninput="OnUrlChanged"
+                               placeholder="https://example.com/podcast/feed.xml"
+                               disabled="@isProcessing" />
+                        @if (validationError != null)
+                        {
+                            <div class="invalid-feedback d-block">
+                                @validationError
+                            </div>
+                        }
+                        <small class="text-muted">
+                            Paste the RSS feed URL of any podcast
+                        </small>
+                    </div>
+
+                    @if (isLoadingFeed)
+                    {
+                        <div class="text-center py-4">
+                            <div class="spinner-border text-primary"></div>
+                            <p class="mt-2 text-muted">Loading podcast feed...</p>
+                        </div>
+                    }
+                    else if (podcastInfo != null && podcastInfo.IsValid)
+                    {
+                        <!-- Podcast Header -->
+                        <div class="card mb-3 border-info">
+                            <div class="row g-0">
+                                <div class="col-md-3">
+                                    <img src="@podcastInfo.ImageUrl" 
+                                         class="img-fluid rounded-start" 
+                                         alt="Podcast cover"
+                                         style="max-height: 200px; object-fit: cover; width: 100%;">
+                                </div>
+                                <div class="col-md-9">
+                                    <div class="card-body">
+                                        <h5 class="card-title">@podcastInfo.Title</h5>
+                                        <p class="card-text small text-muted mb-2">
+                                            <i class="bi bi-person"></i> @podcastInfo.Author
+                                        </p>
+                                        <p class="card-text small">
+                                            @if (podcastInfo.Description.Length > 200)
+                                            {
+                                                @podcastInfo.Description.Substring(0, 200)<text>...</text>
+                                            }
+                                            else
+                                            {
+                                                @podcastInfo.Description
+                                            }
+                                        </p>
+                                        <p class="card-text small text-muted">
+                                            <i class="bi bi-collection-play"></i> @podcastInfo.Episodes.Count episodes available
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Episode Selection -->
+                        <div class="mb-3">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <label class="form-label mb-0">Select Episodes to Import</label>
+                                <div>
+                                    <button class="btn btn-sm btn-outline-secondary me-2" @onclick="SelectAll">
+                                        <i class="bi bi-check-all"></i> Select All
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-secondary" @onclick="SelectNone">
+                                        <i class="bi bi-x"></i> Clear
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <!-- Search Episodes -->
+                            <div class="input-group mb-3">
+                                <span class="input-group-text"><i class="bi bi-search"></i></span>
+                                <input type="text" 
+                                       class="form-control" 
+                                       placeholder="Search episodes..."
+                                       @bind="episodeSearchQuery"
+                                       @bind:event="oninput" />
+                                @if (!string.IsNullOrEmpty(episodeSearchQuery))
+                                {
+                                    <button class="btn btn-outline-secondary" @onclick="ClearSearch">
+                                        <i class="bi bi-x"></i>
+                                    </button>
+                                }
+                            </div>
+                            
+                            @if (!podcastInfo.Episodes.Any())
+                            {
+                                <div class="alert alert-warning">
+                                    <i class="bi bi-exclamation-triangle"></i> No episodes found in this feed.
+                                </div>
+                            }
+                            else
+                            {
+                                var filteredEpisodes = GetFilteredImportEpisodes();
+                                
+                                @if (!filteredEpisodes.Any())
+                                {
+                                    <div class="alert alert-info">
+                                        <i class="bi bi-info-circle"></i> No episodes match your search.
+                                    </div>
+                                }
+                                else
+                                {
+                                    <div class="mb-2">
+                                        <small class="text-muted">
+                                            Showing @filteredEpisodes.Count() of @podcastInfo.Episodes.Count episodes
+                                        </small>
+                                    </div>
+                                    
+                                    <div class="list-group" style="max-height: 500px; overflow-y: auto;">
+                                        @foreach (var episode in filteredEpisodes)
+                                        {
+                                            <div class="list-group-item @(episode.IsSelected ? "active" : "")" 
+                                                 style="cursor: pointer;"
+                                                 @onclick="() => ToggleEpisode(episode)">
+                                                <div class="d-flex align-items-start">
+                                                    <input type="checkbox" 
+                                                           class="form-check-input me-3 mt-1" 
+                                                           checked="@episode.IsSelected"
+                                                           @onclick:stopPropagation="true"
+                                                           @onchange="() => ToggleEpisode(episode)" />
+                                                    <div class="flex-grow-1">
+                                                        <h6 class="mb-1">@episode.Title</h6>
+                                                        <p class="mb-1 small">
+                                                            @if (episode.Description.Length > 150)
+                                                            {
+                                                                @episode.Description.Substring(0, 150)<text>...</text>
+                                                            }
+                                                            else
+                                                            {
+                                                                @episode.Description
+                                                            }
+                                                        </p>
+                                                        <small class="text-muted">
+                                                            <i class="bi bi-calendar"></i> @episode.PublishDate.ToString("MMM dd, yyyy")
+                                                            @if (episode.Duration.TotalSeconds > 0)
+                                                            {
+                                                                <span class="ms-2">
+                                                                    <i class="bi bi-clock"></i> @FormatDuration(episode.Duration)
+                                                                </span>
+                                                            }
+                                                            @if (episode.FileSizeBytes > 0)
+                                                            {
+                                                                <span class="ms-2">
+                                                                    <i class="bi bi-hdd"></i> @FormatFileSize(episode.FileSizeBytes)
+                                                                </span>
+                                                            }
+                                                        </small>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        }
+                                    </div>
+                                }
+                            }
+                        </div>
+
+                        @if (podcastInfo.Episodes.Any())
+                        {
+                            <div class="alert alert-info mb-3">
+                                <i class="bi bi-info-circle"></i>
+                                <strong>@SelectedCount</strong> episode(s) selected
+                                @if (SelectedCount > 0)
+                                {
+                                    <span> • Estimated total: @FormatTotalDuration()</span>
+                                }
+                            </div>
+
+                            <!-- Save & Subscribe Option -->
+                            @if (!isAlreadySubscribed)
+                            {
+                                <div class="form-check mb-3">
+                                    <input class="form-check-input" type="checkbox" id="saveSubscription" @bind="saveAsSubscription">
+                                    <label class="form-check-label" for="saveSubscription">
+                                        <i class="bi bi-bookmark-plus"></i> Save this podcast to "My Podcasts" for easy access to future episodes
+                                    </label>
+                                </div>
+
+                                <!-- Action Buttons -->
+                                <div class="d-grid gap-2">
+                                    <!-- Always show Subscribe button when not subscribed -->
+                                    <button class="btn btn-outline-success" 
+                                            @onclick="SubscribeOnly" 
+                                            disabled="@isProcessing">
+                                        @if (isProcessing)
+                                        {
+                                            <span class="spinner-border spinner-border-sm me-2"></span>
+                                        }
+                                        <i class="bi bi-bookmark-plus"></i> Subscribe to Podcast
+                                    </button>
+                                    
+                                    <button class="btn btn-primary btn-lg" 
+                                            @onclick="StartImport" 
+                                            disabled="@(isProcessing || SelectedCount == 0)">
+                                        @if (isProcessing)
+                                        {
+                                            <span class="spinner-border spinner-border-sm me-2"></span>
+                                            <span>Starting import...</span>
+                                        }
+                                        else
+                                        {
+                                            <i class="bi bi-download"></i>
+                                            <span>@(saveAsSubscription ? "Subscribe & Import" : "Import") @SelectedCount Episode(s)</span>
+                                        }
+                                    </button>
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="alert alert-success mb-3">
+                                    <i class="bi bi-check-circle"></i> You're already subscribed to this podcast!
+                                    <a href="/library/podcasts" class="alert-link">View in My Podcasts</a>
+                                </div>
+
+                                <button class="btn btn-primary btn-lg w-100" 
+                                        @onclick="StartImport" 
+                                        disabled="@(isProcessing || SelectedCount == 0)">
+                                    @if (isProcessing)
+                                    {
+                                        <span class="spinner-border spinner-border-sm me-2"></span>
+                                        <span>Starting import...</span>
+                                    }
+                                    else
+                                    {
+                                        <i class="bi bi-download"></i>
+                                        <span>Import @SelectedCount Episode(s) to Library</span>
+                                    }
+                                </button>
+                            }
+                        }
+                    }
+                </div>
+            </div>
+
+            @if (recentJobs.Any())
+            {
+                <div class="card shadow-sm mt-4">
+                    <div class="card-header">
+                        <h5 class="mb-0"><i class="bi bi-clock-history"></i> Recent Podcast Imports</h5>
+                    </div>
+                    <div class="list-group list-group-flush">
+                        @foreach (var job in recentJobs.Take(10))
+                        {
+                            <div class="list-group-item">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div class="flex-grow-1">
+                                        <h6 class="mb-1">@job.SourceTitle</h6>
+                                        <small class="text-muted">
+                                            @job.Created.ToString("MMM dd, yyyy h:mm tt") • 
+                                            @job.Status
+                                        </small>
+                                    </div>
+                                    @if (job.StatusEnum == ImportJobStatus.Completed && job.MediaLibraryItemId.HasValue)
+                                    {
+                                        <a href="/library/@job.MediaLibraryItemId" class="btn btn-sm btn-outline-primary">
+                                            <i class="bi bi-box-arrow-up-right"></i> View
+                                        </a>
+                                    }
+                                </div>
+                                @if (job.StatusEnum is ImportJobStatus.Downloading or ImportJobStatus.Processing or ImportJobStatus.Saving)
+                                {
+                                    <div class="progress mt-2" style="height: 20px;">
+                                        <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                                             style="width: @(job.ProgressPercentage)%">
+                                            @job.ProgressPercentage%
+                                        </div>
+                                    </div>
+                                    <small class="text-muted">@job.StatusMessage</small>
+                                }
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+
+        <!-- Sidebar -->
+        <div class="col-lg-4">
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    <h5><i class="bi bi-info-circle"></i> How it Works</h5>
+                    <ol class="small">
+                        <li>Paste a podcast RSS feed URL</li>
+                        <li>Preview available episodes</li>
+                        <li>Select episodes to import</li>
+                        <li>Click "Import to Library"</li>
+                        <li>Audio will be downloaded and saved</li>
+                    </ol>
+                    
+                    <hr />
+                    
+                    <h6><i class="bi bi-check-circle"></i> Supported</h6>
+                    <ul class="small mb-0">
+                        <li>Any public RSS 2.0 or Atom feed</li>
+                        <li>MP3, M4A, OGG audio formats</li>
+                        <li>Batch import (multiple episodes)</li>
+                        <li>Automatic metadata extraction</li>
+                    </ul>
+                    
+                    <hr />
+                    
+                    <h6><i class="bi bi-lightbulb"></i> Tips</h6>
+                    <ul class="small mb-0">
+                        <li>Most podcast apps show the RSS feed URL in settings</li>
+                        <li>You can import up to 50 episodes at once</li>
+                        <li>Episodes are added to your library for reuse</li>
+                        <li>Check "Recent Imports" below for progress</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="card shadow-sm mt-3">
+                <div class="card-body">
+                    <h6><i class="bi bi-question-circle"></i> Where to Find RSS Feeds</h6>
+                    <ul class="small mb-0">
+                        <li><strong>Apple Podcasts:</strong> Share podcast ? Copy Link ? Add /feed</li>
+                        <li><strong>Spotify:</strong> Not available (proprietary)</li>
+                        <li><strong>Podcast websites:</strong> Look for RSS icon</li>
+                        <li><strong>Search engines:</strong> "[Podcast name] RSS feed"</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private string rssUrl = string.Empty;
+    private PodcastFeedInfo? podcastInfo;
+    private string? validationError;
+    private bool isLoadingFeed;
+    private bool isProcessing;
+    private bool isAlreadySubscribed;
+    private bool saveAsSubscription = true;
+    private string episodeSearchQuery = string.Empty;
+    private List<ImportJob> recentJobs = new();
+    private System.Threading.Timer? debounceTimer;
+    private System.Threading.Timer? pollTimer;
+
+    private int SelectedCount => GetFilteredImportEpisodes().Count(e => e.IsSelected);
+
+    private IEnumerable<PodcastEpisode> GetFilteredImportEpisodes()
+    {
+        if (podcastInfo == null)
+            return Enumerable.Empty<PodcastEpisode>();
+
+        if (string.IsNullOrWhiteSpace(episodeSearchQuery))
+            return podcastInfo.Episodes;
+
+        var lowerQuery = episodeSearchQuery.ToLower();
+        return podcastInfo.Episodes.Where(e =>
+            e.Title.ToLower().Contains(lowerQuery) ||
+            (e.Description?.ToLower().Contains(lowerQuery) ?? false));
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadRecentJobs();
+        StartPolling();
+    }
+
+    private void OnUrlChanged(ChangeEventArgs e)
+    {
+        rssUrl = e.Value?.ToString() ?? string.Empty;
+        validationError = null;
+        podcastInfo = null;
+        isAlreadySubscribed = false;
+        
+        // Debounce feed loading (wait 800ms after user stops typing)
+        debounceTimer?.Dispose();
+        debounceTimer = new System.Threading.Timer(async _ =>
+        {
+            await InvokeAsync(async () =>
+            {
+                await LoadFeed();
+                StateHasChanged();
+            });
+        }, null, TimeSpan.FromMilliseconds(800), Timeout.InfiniteTimeSpan);
+    }
+
+    private async Task LoadFeed()
+    {
+        if (string.IsNullOrWhiteSpace(rssUrl))
+        {
+            podcastInfo = null;
+            return;
+        }
+        
+        isLoadingFeed = true;
+        validationError = null;
+        
+        try
+        {
+            podcastInfo = await PodcastService.GetFeedInfoAsync(rssUrl);
+            
+            if (!podcastInfo.IsValid)
+            {
+                validationError = podcastInfo.ErrorMessage;
+                podcastInfo = null;
+            }
+            else
+            {
+                // Check if user is already subscribed
+                var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+                var userId = authState.User.FindFirstValue(ClaimTypes.NameIdentifier);
+                
+                if (!string.IsNullOrEmpty(userId))
+                {
+                    var existing = await SavedPodcastService.GetUserSubscriptionsAsync(userId);
+                    isAlreadySubscribed = existing.Any(s => s.SavedPodcast?.FeedUrl == rssUrl);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to load podcast feed");
+            validationError = "Failed to load podcast feed. Please check the URL.";
+            podcastInfo = null;
+        }
+        finally
+        {
+            isLoadingFeed = false;
+        }
+    }
+
+    private void ToggleEpisode(PodcastEpisode episode)
+    {
+        episode.IsSelected = !episode.IsSelected;
+    }
+
+    private void SelectAll()
+    {
+        foreach (var episode in GetFilteredImportEpisodes())
+        {
+            episode.IsSelected = true;
+        }
+    }
+
+    private void SelectNone()
+    {
+        foreach (var episode in GetFilteredImportEpisodes())
+        {
+            episode.IsSelected = false;
+        }
+    }
+
+    private void ClearSearch()
+    {
+        episodeSearchQuery = string.Empty;
+    }
+
+    private async Task SubscribeOnly()
+    {
+        if (podcastInfo == null)
+            return;
+
+        isProcessing = true;
+        
+        try
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var userId = authState.User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+            if (string.IsNullOrEmpty(userId))
+            {
+                validationError = "User not authenticated";
+                return;
+            }
+
+            // Subscribe without importing any episodes
+            await SavedPodcastService.SubscribeToPodcastAsync(userId, podcastInfo);
+            Logger.LogInformation("User {UserId} subscribed to podcast: {Title}", userId, podcastInfo.Title);
+
+            // Clear form and navigate to My Podcasts
+            rssUrl = string.Empty;
+            podcastInfo = null;
+            validationError = null;
+            isAlreadySubscribed = false;
+
+            Navigation.NavigateTo("/library/podcasts");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to subscribe to podcast");
+            validationError = "Failed to subscribe. Please try again.";
+        }
+        finally
+        {
+            isProcessing = false;
+        }
+    }
+
+    private async Task StartImport()
+    {
+        if (podcastInfo == null || !podcastInfo.Episodes.Any(e => e.IsSelected))
+            return;
+
+        isProcessing = true;
+        
+        try
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var userId = authState.User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+            if (string.IsNullOrEmpty(userId))
+            {
+                validationError = "User not authenticated";
+                return;
+            }
+
+            // Save subscription if requested and not already subscribed
+            if (saveAsSubscription && !isAlreadySubscribed)
+            {
+                try
+                {
+                    await SavedPodcastService.SubscribeToPodcastAsync(userId, podcastInfo);
+                    Logger.LogInformation("User {UserId} subscribed to podcast: {Title}", userId, podcastInfo.Title);
+                }
+                catch (Exception ex)
+                {
+                    Logger.LogError(ex, "Failed to save podcast subscription");
+                    // Continue with import even if subscription fails
+                }
+            }
+
+            var selectedEpisodes = podcastInfo.Episodes.Where(e => e.IsSelected).ToList();
+
+            foreach (var episode in selectedEpisodes)
+            {
+                // Create job in database
+                var job = await ImportJobService.CreatePodcastImportJobAsync(
+                    userId,
+                    podcastInfo.FeedUrl,
+                    episode);
+
+                // Enqueue for background processing
+                await JobProcessor.EnqueueJobAsync(job.Id);
+
+                Logger.LogInformation("Started podcast import job {JobId} for episode: {Title}", 
+                    job.Id, episode.Title);
+
+                // Add to recent jobs list
+                recentJobs.Insert(0, job);
+            }
+
+            // Clear form
+            rssUrl = string.Empty;
+            podcastInfo = null;
+            validationError = null;
+            isAlreadySubscribed = false;
+
+            // Show success message
+            Logger.LogInformation("Started {Count} podcast import jobs", selectedEpisodes.Count);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to start podcast import");
+            validationError = ex.Message;
+        }
+        finally
+        {
+            isProcessing = false;
+        }
+    }
+
+    private async Task LoadRecentJobs()
+    {
+        try
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var userId = authState.User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+            if (!string.IsNullOrEmpty(userId))
+            {
+                var allJobs = await ImportJobService.GetUserJobsAsync(userId, take: 50);
+                // Filter to podcast jobs only
+                recentJobs = allJobs.Where(j => j.Source == ImportSource.Podcast).Take(20).ToList();
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to load recent jobs");
+        }
+    }
+
+    private void StartPolling()
+    {
+        // Poll for job updates every 3 seconds
+        pollTimer = new System.Threading.Timer(async _ =>
+        {
+            await InvokeAsync(async () =>
+            {
+                await LoadRecentJobs();
+                StateHasChanged();
+            });
+        }, null, TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(3));
+    }
+
+    private string FormatDuration(TimeSpan duration)
+    {
+        if (duration.TotalHours >= 1)
+            return $"{(int)duration.TotalHours}h {duration.Minutes}m";
+        if (duration.TotalMinutes >= 1)
+            return $"{duration.Minutes}m {duration.Seconds}s";
+        return $"{duration.Seconds}s";
+    }
+
+    private string FormatFileSize(long bytes)
+    {
+        string[] sizes = { "B", "KB", "MB", "GB" };
+        double len = bytes;
+        int order = 0;
+        while (len >= 1024 && order < sizes.Length - 1)
+        {
+            order++;
+            len = len / 1024;
+        }
+        return $"{len:0.##} {sizes[order]}";
+    }
+
+    private string FormatTotalDuration()
+    {
+        if (podcastInfo == null) return "0m";
+        
+        var totalSeconds = podcastInfo.Episodes
+            .Where(e => e.IsSelected)
+            .Sum(e => e.Duration.TotalSeconds);
+            
+        var duration = TimeSpan.FromSeconds(totalSeconds);
+        
+        if (duration.TotalHours >= 1)
+            return $"{(int)duration.TotalHours}h {duration.Minutes}m";
+        return $"{duration.Minutes}m";
+    }
+
+    public void Dispose()
+    {
+        debounceTimer?.Dispose();
+        pollTimer?.Dispose();
+    }
+}

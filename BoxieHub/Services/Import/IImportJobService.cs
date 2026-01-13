@@ -15,6 +15,7 @@ public interface IImportJobService
         string youtubeUrl, 
         string? customTitle = null,
         string? customDescription = null,
+        string? category = null,
         CancellationToken ct = default);
     
     /// <summary>
@@ -42,4 +43,13 @@ public interface IImportJobService
     /// Cancel a pending or running import job
     /// </summary>
     Task<bool> CancelJobAsync(int jobId, string userId, CancellationToken ct = default);
+    
+    /// <summary>
+    /// Create a new podcast import job from episode
+    /// </summary>
+    Task<ImportJob> CreatePodcastImportJobAsync(
+        string userId,
+        string feedUrl,
+        PodcastEpisode episode,
+        CancellationToken ct = default);
 }

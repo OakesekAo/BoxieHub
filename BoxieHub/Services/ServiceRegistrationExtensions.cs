@@ -119,15 +119,24 @@ public static class ServiceRegistrationExtensions
     }
     
     /// <summary>
-    /// Registers import services (YouTube, background processor)
+    /// Registers import services (YouTube, Podcast, background processor)
     /// </summary>
     private static IServiceCollection AddImportServices(this IServiceCollection services)
     {
         // Register YouTube import service
         services.AddScoped<IYouTubeImportService, YouTubeImportService>();
         
+        // Register Podcast import service
+        services.AddScoped<IPodcastImportService, PodcastImportService>();
+        
+        // Register Saved Podcast service
+        services.AddScoped<ISavedPodcastService, SavedPodcastService>();
+        
         // Register import job service
         services.AddScoped<IImportJobService, ImportJobService>();
+        
+        // Register audio analysis service for duration verification
+        services.AddScoped<BoxieHub.Services.Audio.IAudioAnalysisService, BoxieHub.Services.Audio.AudioAnalysisService>();
         
         // Register background job processor as singleton (runs once per app lifetime)
         services.AddSingleton<ImportJobProcessor>();

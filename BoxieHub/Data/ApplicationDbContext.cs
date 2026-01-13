@@ -22,6 +22,9 @@ namespace BoxieHub.Data
     public DbSet<UserStorageAccount> UserStorageAccounts { get; set; }
     public DbSet<UserStoragePreference> UserStoragePreferences { get; set; }
     public DbSet<ImportJob> ImportJobs { get; set; }
+    public DbSet<SavedPodcast> SavedPodcasts { get; set; }
+    public DbSet<PodcastSubscription> PodcastSubscriptions { get; set; }
+    public DbSet<PodcastEpisodeCache> PodcastEpisodeCache { get; set; }
 
     protected override void OnModelCreating(ModelBuilder builder)
         {
@@ -126,6 +129,58 @@ namespace BoxieHub.Data
                 .HasOne(i => i.MediaLibraryItem)
                 .WithMany()
                 .HasForeignKey(i => i.MediaLibraryItemId)
+                .OnDelete(DeleteBehavior.SetNull);
+            
+            // SavedPodcast indexes
+            builder.Entity<SavedPodcast>()
+                .HasIndex(s => s.FeedUrl)
+                .IsUnique()
+                .HasDatabaseName("IX_SavedPodcasts_FeedUrl");
+            
+            builder.Entity<SavedPodcast>()
+                .HasIndex(s => s.LastFetched)
+                .HasDatabaseName("IX_SavedPodcasts_LastFetched");
+            
+            // PodcastSubscription indexes
+            builder.Entity<PodcastSubscription>()
+                .HasIndex(s => s.UserId)
+                .HasDatabaseName("IX_PodcastSubscriptions_UserId");
+            
+            builder.Entity<PodcastSubscription>()
+                .HasIndex(s => new { s.UserId, s.SavedPodcastId })
+                .IsUnique()
+                .HasDatabaseName("IX_PodcastSubscriptions_UserId_PodcastId");
+            
+            builder.Entity<PodcastSubscription>()
+                .HasIndex(s => s.IsFavorite)
+                .HasDatabaseName("IX_PodcastSubscriptions_IsFavorite");
+            
+            builder.Entity<PodcastSubscription>()
+                .HasIndex(s => s.LastAccessed)
+                .HasDatabaseName("IX_PodcastSubscriptions_LastAccessed");
+            
+            // PodcastEpisodeCache indexes
+            builder.Entity<PodcastEpisodeCache>()
+                .HasIndex(e => e.SavedPodcastId)
+                .HasDatabaseName("IX_PodcastEpisodeCache_PodcastId");
+            
+            builder.Entity<PodcastEpisodeCache>()
+                .HasIndex(e => new { e.SavedPodcastId, e.EpisodeGuid })
+                .IsUnique()
+                .HasDatabaseName("IX_PodcastEpisodeCache_PodcastId_Guid");
+            
+            builder.Entity<PodcastEpisodeCache>()
+                .HasIndex(e => e.AudioUrl)
+                .HasDatabaseName("IX_PodcastEpisodeCache_AudioUrl");
+            
+            builder.Entity<PodcastEpisodeCache>()
+                .HasIndex(e => e.FileUploadId)
+                .HasDatabaseName("IX_PodcastEpisodeCache_FileUploadId");
+            
+            builder.Entity<PodcastEpisodeCache>()
+                .HasOne(e => e.FileUpload)
+                .WithMany()
+                .HasForeignKey(e => e.FileUploadId)
                 .OnDelete(DeleteBehavior.SetNull);
         }
     }

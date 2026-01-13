@@ -1,0 +1,133 @@
+@using BoxieHub.Models
+
+<div class="list-group-item">
+    <div class="row align-items-center">
+        <div class="col-md-2 text-center">
+            @if (!string.IsNullOrEmpty(Episode.ImageUrl))
+            {
+                <img src="@Episode.ImageUrl" 
+                     alt="@Episode.Title" 
+                     class="img-thumbnail"
+                     style="max-width: 100px;">
+            }
+            else if (!string.IsNullOrEmpty(PodcastImage))
+            {
+                <img src="@PodcastImage" 
+                     alt="@Episode.Title" 
+                     class="img-thumbnail"
+                     style="max-width: 100px;">
+            }
+        </div>
+        <div class="col-md-7">
+            <h6 class="mb-1">@Episode.Title</h6>
+            <p class="text-muted small mb-2">
+                @if (Episode.Description.Length > 200)
+                {
+                    @Episode.Description.Substring(0, 200)<text>...</text>
+                }
+                else
+                {
+                    @Episode.Description
+                }
+            </p>
+            <div class="d-flex gap-3">
+                <small class="text-muted">
+                    <i class="bi bi-calendar"></i> @Episode.PublishDate.ToString("MMM dd, yyyy")
+                </small>
+                @if (Episode.DurationSeconds > 0)
+                {
+                    <small class="text-muted">
+                        <i class="bi bi-clock"></i> @FormatDuration(TimeSpan.FromSeconds(Episode.DurationSeconds))
+                    </small>
+                }
+                @if (Episode.FileSizeBytes > 0)
+                {
+                    <small class="text-muted">
+                        <i class="bi bi-hdd"></i> @FormatFileSize(Episode.FileSizeBytes)
+                    </small>
+                }
+            </div>
+            
+            <!-- Deduplication Status -->
+            @if (Episode.FileUploadId.HasValue)
+            {
+                <span class="badge bg-success mt-2">
+                    <i class="bi bi-cloud-check"></i> Already Downloaded (@Episode.ImportCount import(s))
+                </span>
+            }
+        </div>
+        <div class="col-md-3 text-end">
+            @if (Episode.FileUploadId.HasValue)
+            {
+                <!-- Episode already downloaded - instant import! -->
+                <button class="btn btn-success btn-sm" 
+                        @onclick="OnImport"
+                        disabled="@IsImporting">
+                    @if (IsImporting)
+                    {
+                        <span class="spinner-border spinner-border-sm me-1"></span>
+                    }
+                    <i class="bi bi-lightning-fill"></i> Instant Import
+                </button>
+                <small class="d-block text-muted mt-1">
+                    No download needed!
+                </small>
+            }
+            else
+            {
+                <!-- Episode not downloaded yet -->
+                <button class="btn btn-primary btn-sm" 
+                        @onclick="OnImport"
+                        disabled="@IsImporting">
+                    @if (IsImporting)
+                    {
+                        <span class="spinner-border spinner-border-sm me-1"></span>
+                    }
+                    <i class="bi bi-download"></i> Download & Import
+                </button>
+                @if (Episode.FileSizeBytes > 0)
+                {
+                    <small class="d-block text-muted mt-1">
+                        ~@FormatFileSize(Episode.FileSizeBytes)
+                    </small>
+                }
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public PodcastEpisodeCache Episode { get; set; } = default!;
+
+    [Parameter]
+    public string? PodcastImage { get; set; }
+
+    [Parameter]
+    public EventCallback OnImport { get; set; }
+
+    [Parameter]
+    public bool IsImporting { get; set; }
+
+    private string FormatDuration(TimeSpan duration)
+    {
+        if (duration.TotalHours >= 1)
+            return $"{(int)duration.TotalHours}h {duration.Minutes}m";
+        if (duration.TotalMinutes >= 1)
+            return $"{duration.Minutes}m {duration.Seconds}s";
+        return $"{duration.Seconds}s";
+    }
+
+    private string FormatFileSize(long bytes)
+    {
+        string[] sizes = { "B", "KB", "MB", "GB" };
+        double len = bytes;
+        int order = 0;
+        while (len >= 1024 && order < sizes.Length - 1)
+        {
+            order++;
+            len = len / 1024;
+        }
+        return $"{len:0.##} {sizes[order]}";
+    }
+}
