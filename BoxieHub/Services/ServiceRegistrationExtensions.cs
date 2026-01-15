@@ -135,12 +135,20 @@ public static class ServiceRegistrationExtensions
         // Register import job service
         services.AddScoped<IImportJobService, ImportJobService>();
         
+        // Register Tonie upload job service
+        services.AddScoped<Tonie.ITonieUploadJobService, Tonie.TonieUploadJobService>();
+        
+        
         // Register audio analysis service for duration verification
         services.AddScoped<BoxieHub.Services.Audio.IAudioAnalysisService, BoxieHub.Services.Audio.AudioAnalysisService>();
         
         // Register background job processor as singleton (runs once per app lifetime)
         services.AddSingleton<ImportJobProcessor>();
         services.AddHostedService(sp => sp.GetRequiredService<ImportJobProcessor>());
+        
+        // Register Tonie upload job processor as singleton
+        services.AddSingleton<Tonie.TonieUploadJobProcessor>();
+        services.AddHostedService(sp => sp.GetRequiredService<Tonie.TonieUploadJobProcessor>());
         
         return services;
     }

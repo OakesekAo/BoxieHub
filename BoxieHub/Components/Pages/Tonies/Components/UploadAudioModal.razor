@@ -1,7 +1,12 @@
 @using BoxieHub.Services
+@using BoxieHub.Services.Tonie
 @using System.Security.Claims
 @inject ITonieService TonieService
+@inject IMediaLibraryService MediaLibraryService
+@inject ITonieUploadJobService UploadJobService
+@inject TonieUploadJobProcessor JobProcessor
 @inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Navigation
 @inject ILogger<UploadAudioModal> Logger
 
 @if (IsVisible)
@@ -306,40 +311,57 @@
                 return;
             }
 
-            // Read the file stream - keep reference until upload completes
+            // Step 1: Upload to library first
             using var stream = selectedFile.OpenReadStream(maxAllowedSize: 200 * 1024 * 1024);
-
-            // Upload to Tonie Cloud
-            uploadResult = await TonieService.UploadAudioToTonieAsync(
+            
+            var dto = new Models.MediaLibraryItemDto
+            {
+                Title = chapterTitle,
+                Description = $"Uploaded to {TonieName}",
+                Category = "Audio",
+                OriginalFileName = selectedFile.Name,
+                ContentType = selectedFile.ContentType,
+                Tags = new List<string>()
+            };
+            
+            var libraryItem = await MediaLibraryService.AddToLibraryAsync(
                 userId,
+                stream,
+                dto
+            );
+
+            Logger.LogInformation("Uploaded file to library as item {ItemId}", libraryItem.Id);
+
+            // Step 2: Create upload job (library → Tonie)
+            var job = await UploadJobService.CreateUploadJobAsync(
+                userId,
+                libraryItem.Id,
                 HouseholdId,
                 TonieId,
-                stream,
-                chapterTitle);
+                chapterTitle
+            );
 
-            if (uploadResult.Success)
-            {
-                Logger.LogInformation("Successfully uploaded '{Title}' to Tonie {TonieId}", chapterTitle, TonieId);
-            }
-            else
-            {
-                Logger.LogWarning("Upload failed for '{Title}': {Error}", chapterTitle, uploadResult.ErrorDetails);
-            }
+            Logger.LogInformation("Created upload job {JobId}", job.Id);
+
+            // Step 3: Enqueue for background processing
+            await JobProcessor.EnqueueJobAsync(job.Id);
+
+            Logger.LogInformation("Enqueued upload job {JobId}", job.Id);
+
+            // Step 4: Close modal and redirect to progress page
+            await Close();
+            Navigation.NavigateTo($"/tonies/upload-progress/{job.Id}");
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "Error uploading audio file");
+            Logger.LogError(ex, "Error starting upload");
             uploadResult = new Models.BoxieCloud.SyncResultDto
             {
                 Success = false,
                 Message = "Upload failed",
                 ErrorDetails = ex.Message
             };
-        }
-        finally
-        {
             isUploading = false;
-            selectedFile = null;
         }
     }
 

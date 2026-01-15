@@ -22,6 +22,7 @@ namespace BoxieHub.Data
     public DbSet<UserStorageAccount> UserStorageAccounts { get; set; }
     public DbSet<UserStoragePreference> UserStoragePreferences { get; set; }
     public DbSet<ImportJob> ImportJobs { get; set; }
+    public DbSet<TonieUploadJob> TonieUploadJobs { get; set; }
     public DbSet<SavedPodcast> SavedPodcasts { get; set; }
     public DbSet<PodcastSubscription> PodcastSubscriptions { get; set; }
     public DbSet<PodcastEpisodeCache> PodcastEpisodeCache { get; set; }

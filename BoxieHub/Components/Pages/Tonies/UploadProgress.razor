@@ -1,0 +1,322 @@
+@page "/tonies/upload-progress/{JobId:int}"
+@using BoxieHub.Services.Tonie
+@using BoxieHub.Models
+@inject ITonieUploadJobService JobService
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+
+<PageTitle>Upload Progress - BoxieHub</PageTitle>
+
+<div class="container mt-4">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="/tonies">Tonies</a></li>
+            <li class="breadcrumb-item active">Upload Progress</li>
+        </ol>
+    </nav>
+
+    @if (job == null && !isLoading)
+    {
+        <div class="alert alert-danger">
+            <i class="bi bi-exclamation-triangle"></i> Upload job not found
+        </div>
+        <a href="/tonies" class="btn btn-primary">
+            <i class="bi bi-arrow-left"></i> Back to Tonies
+        </a>
+    }
+    else if (job != null)
+    {
+        <div class="row justify-content-center">
+            <div class="col-lg-8">
+                <div class="card shadow-sm">
+                    <div class="card-header @GetStatusHeaderClass()">
+                        <h4 class="mb-0">
+                            <i class="bi @GetStatusIcon()"></i> @GetStatusTitle()
+                        </h4>
+                    </div>
+                    <div class="card-body">
+                        <!-- Job Info -->
+                        <div class="mb-4">
+                            <h5>@job.ChapterTitle</h5>
+                            <div class="text-muted small">
+                                <i class="bi bi-clock"></i> Started @job.Created.ToLocalTime().ToString("MMM dd, yyyy h:mm tt")
+                            </div>
+                        </div>
+
+                        <!-- Progress Bar -->
+                        @if (job.StatusEnum is TonieUploadJobStatus.Preparing 
+                            or TonieUploadJobStatus.Compressing 
+                            or TonieUploadJobStatus.Uploading 
+                            or TonieUploadJobStatus.Refreshing)
+                        {
+                            <div class="mb-4">
+                                <div class="progress" style="height: 30px;">
+                                    <div class="progress-bar progress-bar-striped progress-bar-animated @GetProgressBarClass()" 
+                                         role="progressbar" 
+                                         style="width: @(job.ProgressPercentage)%"
+                                         aria-valuenow="@job.ProgressPercentage" 
+                                         aria-valuemin="0" 
+                                         aria-valuemax="100">
+                                        @job.ProgressPercentage%
+                                    </div>
+                                </div>
+                                <p class="text-muted mt-2 mb-0">
+                                    <i class="bi bi-info-circle"></i> @job.StatusMessage
+                                </p>
+                            </div>
+                        }
+
+                        <!-- Status Message -->
+                        @if (job.StatusEnum == TonieUploadJobStatus.Completed)
+                        {
+                            <div class="alert alert-success">
+                                <i class="bi bi-check-circle-fill"></i> 
+                                <strong>Upload completed successfully!</strong>
+                                <p class="mb-0 mt-2">Your audio has been uploaded to the Tonie.</p>
+                            </div>
+                        }
+                        else if (job.StatusEnum == TonieUploadJobStatus.Failed)
+                        {
+                            <div class="alert alert-danger">
+                                <i class="bi bi-x-circle-fill"></i> 
+                                <strong>Upload failed</strong>
+                                <p class="mb-0 mt-2">@job.ErrorMessage</p>
+                            </div>
+                        }
+                        else if (job.StatusEnum == TonieUploadJobStatus.Cancelled)
+                        {
+                            <div class="alert alert-warning">
+                                <i class="bi bi-exclamation-triangle-fill"></i> 
+                                <strong>Upload cancelled</strong>
+                                <p class="mb-0 mt-2">The upload was cancelled.</p>
+                            </div>
+                        }
+                        else if (job.StatusEnum == TonieUploadJobStatus.Pending)
+                        {
+                            <div class="alert alert-info">
+                                <i class="bi bi-hourglass-split"></i> 
+                                <strong>Queued</strong>
+                                <p class="mb-0 mt-2">Your upload is queued and will start soon...</p>
+                            </div>
+                        }
+
+                        <!-- Status Timeline -->
+                        <div class="timeline mt-4">
+                            <div class="timeline-item @(job.StatusEnum >= TonieUploadJobStatus.Pending ? "completed" : "")">
+                                <i class="bi bi-check-circle-fill"></i>
+                                <span>Queued</span>
+                            </div>
+                            <div class="timeline-item @(job.StatusEnum >= TonieUploadJobStatus.Preparing ? "completed" : "") @(job.StatusEnum == TonieUploadJobStatus.Preparing ? "active" : "")">
+                                <i class="bi @(job.StatusEnum == TonieUploadJobStatus.Preparing ? "bi-arrow-repeat spin" : "bi-check-circle-fill")"></i>
+                                <span>Preparing</span>
+                            </div>
+                            <div class="timeline-item @(job.StatusEnum >= TonieUploadJobStatus.Uploading ? "completed" : "") @(job.StatusEnum == TonieUploadJobStatus.Uploading ? "active" : "")">
+                                <i class="bi @(job.StatusEnum == TonieUploadJobStatus.Uploading ? "bi-arrow-repeat spin" : "bi-check-circle-fill")"></i>
+                                <span>Uploading</span>
+                            </div>
+                            <div class="timeline-item @(job.StatusEnum >= TonieUploadJobStatus.Refreshing ? "completed" : "") @(job.StatusEnum == TonieUploadJobStatus.Refreshing ? "active" : "")">
+                                <i class="bi @(job.StatusEnum == TonieUploadJobStatus.Refreshing ? "bi-arrow-repeat spin" : "bi-check-circle-fill")"></i>
+                                <span>Refreshing</span>
+                            </div>
+                            <div class="timeline-item @(job.StatusEnum == TonieUploadJobStatus.Completed ? "completed" : "")">
+                                <i class="bi bi-check-circle-fill"></i>
+                                <span>Complete</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-footer bg-light">
+                        @if (job.StatusEnum == TonieUploadJobStatus.Completed)
+                        {
+                            <a href="/tonies/@job.HouseholdId/@job.TonieId" class="btn btn-primary">
+                                <i class="bi bi-disc"></i> View Tonie
+                            </a>
+                        }
+                        else if (job.StatusEnum is TonieUploadJobStatus.Failed or TonieUploadJobStatus.Cancelled)
+                        {
+                            <a href="/tonies/@job.HouseholdId/@job.TonieId" class="btn btn-secondary">
+                                <i class="bi bi-arrow-left"></i> Back to Tonie
+                            </a>
+                        }
+                        else
+                        {
+                            <button class="btn btn-outline-secondary" disabled>
+                                <i class="bi bi-hourglass-split"></i> Processing...
+                            </button>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+<style>
+    .timeline {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 20px 0;
+        position: relative;
+    }
+
+    .timeline::before {
+        content: '';
+        position: absolute;
+        top: 30px;
+        left: 0;
+        right: 0;
+        height: 2px;
+        background: #dee2e6;
+        z-index: 0;
+    }
+
+    .timeline-item {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 8px;
+        position: relative;
+        z-index: 1;
+        background: white;
+        padding: 0 10px;
+    }
+
+    .timeline-item i {
+        font-size: 24px;
+        color: #dee2e6;
+    }
+
+    .timeline-item.completed i {
+        color: #198754;
+    }
+
+    .timeline-item.active i {
+        color: #0d6efd;
+    }
+
+    .timeline-item span {
+        font-size: 12px;
+        color: #6c757d;
+        white-space: nowrap;
+    }
+
+    .timeline-item.completed span,
+    .timeline-item.active span {
+        color: #212529;
+        font-weight: 500;
+    }
+
+    @@keyframes spin {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+    }
+
+    .spin {
+        animation: spin 2s linear infinite;
+    }
+</style>
+
+@code {
+    [Parameter]
+    public int JobId { get; set; }
+
+    private TonieUploadJob? job;
+    private bool isLoading = true;
+    private System.Threading.Timer? pollTimer;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadJob();
+        StartPolling();
+    }
+
+    private async Task LoadJob()
+    {
+        isLoading = true;
+        
+        try
+        {
+            job = await JobService.GetJobByIdAsync(JobId);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading job: {ex.Message}");
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private void StartPolling()
+    {
+        if (job == null) return;
+
+        // Poll every 2 seconds while job is active
+        if (job.StatusEnum is TonieUploadJobStatus.Pending 
+            or TonieUploadJobStatus.Preparing 
+            or TonieUploadJobStatus.Compressing 
+            or TonieUploadJobStatus.Uploading 
+            or TonieUploadJobStatus.Refreshing)
+        {
+            pollTimer = new System.Threading.Timer(async _ =>
+            {
+                await InvokeAsync(async () =>
+                {
+                    await LoadJob();
+                    StateHasChanged();
+
+                    // Stop polling if job finished
+                    if (job?.StatusEnum is TonieUploadJobStatus.Completed 
+                        or TonieUploadJobStatus.Failed 
+                        or TonieUploadJobStatus.Cancelled)
+                    {
+                        pollTimer?.Dispose();
+                        pollTimer = null;
+                    }
+                });
+            }, null, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(2));
+        }
+    }
+
+    private string GetStatusTitle() => job?.StatusEnum switch
+    {
+        TonieUploadJobStatus.Pending => "Upload Queued",
+        TonieUploadJobStatus.Preparing => "Preparing Audio",
+        TonieUploadJobStatus.Compressing => "Compressing Audio",
+        TonieUploadJobStatus.Uploading => "Uploading to Tonie",
+        TonieUploadJobStatus.Refreshing => "Refreshing Tonie Data",
+        TonieUploadJobStatus.Completed => "Upload Complete",
+        TonieUploadJobStatus.Failed => "Upload Failed",
+        TonieUploadJobStatus.Cancelled => "Upload Cancelled",
+        _ => "Processing"
+    };
+
+    private string GetStatusIcon() => job?.StatusEnum switch
+    {
+        TonieUploadJobStatus.Completed => "bi-check-circle-fill",
+        TonieUploadJobStatus.Failed => "bi-x-circle-fill",
+        TonieUploadJobStatus.Cancelled => "bi-exclamation-triangle-fill",
+        _ => "bi-arrow-repeat spin"
+    };
+
+    private string GetStatusHeaderClass() => job?.StatusEnum switch
+    {
+        TonieUploadJobStatus.Completed => "bg-success text-white",
+        TonieUploadJobStatus.Failed => "bg-danger text-white",
+        TonieUploadJobStatus.Cancelled => "bg-warning",
+        _ => "bg-primary text-white"
+    };
+
+    private string GetProgressBarClass() => job?.StatusEnum switch
+    {
+        TonieUploadJobStatus.Failed => "bg-danger",
+        TonieUploadJobStatus.Cancelled => "bg-warning",
+        _ => "bg-primary"
+    };
+
+    public void Dispose()
+    {
+        pollTimer?.Dispose();
+    }
+}
