@@ -1,6 +1,7 @@
 @rendermode InteractiveServer
 @page "/library/podcasts/{podcastId:int}"
 @using BoxieHub.Services.Import
+@using BoxieHub.Services
 @using BoxieHub.Models
 @using System.Security.Claims
 @using Microsoft.AspNetCore.Authorization
@@ -10,6 +11,7 @@
 @inject AuthenticationStateProvider AuthStateProvider
 @inject NavigationManager Navigation
 @inject ILogger<PodcastEpisodes> Logger
+@inject IToastService ToastService
 @attribute [Authorize]
 
 <PageTitle>@podcastTitle - BoxieHub</PageTitle>
@@ -126,7 +128,7 @@
                                         @if (episode.DurationSeconds > 0)
                                         {
                                             <small class="text-muted">
-                                                <i class="bi bi-clock"></i> @FormatDuration(TimeSpan.FromSeconds(episode.DurationSeconds / 1000.0))
+                                                <i class="bi bi-clock"></i> @FormatDuration(TimeSpan.FromSeconds(episode.DurationSeconds))
                                             </small>
                                         }
                                         @if (episode.FileSizeBytes > 0)
@@ -439,10 +441,20 @@
                 {
                     successMessage = $"'{episode.Title}' added to library instantly (reused existing file)!";
                     episode.ImportCount++;
+                    
+                    // Show toast for instant import
+                    ToastService.ShowSuccess(
+                        $"'{episode.Title}' added to library (reused existing file)",
+                        "Import Complete");
                 }
                 else
                 {
                     successMessage = $"'{episode.Title}' queued for download. Check library for progress.";
+                    
+                    // Show toast for queued import
+                    ToastService.ShowInfo(
+                        $"'{episode.Title}' is being downloaded",
+                        "Import Started");
                 }
                 
                 Logger.LogInformation("Started import job {JobId} for episode {EpisodeId}", 
@@ -453,6 +465,11 @@
         {
             Logger.LogError(ex, "Failed to import episode {EpisodeId}", episode.Id);
             errorMessage = $"Failed to import '{episode.Title}'. Please try again.";
+            
+            // Show error toast
+            ToastService.ShowError(
+                $"Failed to import '{episode.Title}'",
+                "Import Failed");
         }
         finally
         {

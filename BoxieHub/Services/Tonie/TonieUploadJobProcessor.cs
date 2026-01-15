@@ -176,14 +176,32 @@ public class TonieUploadJobProcessor : BackgroundService
             await jobService.UpdateJobStatusAsync(jobId, TonieUploadJobStatus.Uploading, 50,
                 "Uploading to Tonie Cloud...", ct);
 
-            // Step 3: Upload to Tonie Cloud API
-            var result = await tonieService.UploadAudioToTonieAsync(
-                job.UserId,
-                job.HouseholdId,
-                job.TonieId,
-                audioStream,
-                job.ChapterTitle!,
-                ct);
+            // Step 3: Upload to Tonie Cloud API (with timeout)
+            _logger.LogInformation("Starting upload to Tonie Cloud for job {JobId} (Size: {Size} bytes)", 
+                jobId, audioStream.Length);
+            
+            // Create timeout token (10 minutes max)
+            using var timeoutCts = new CancellationTokenSource(TimeSpan.FromMinutes(10));
+            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
+            
+            SyncResultDto result;
+            try
+            {
+                result = await tonieService.UploadAudioToTonieAsync(
+                    job.UserId,
+                    job.HouseholdId,
+                    job.TonieId,
+                    audioStream,
+                    job.ChapterTitle!,
+                    linkedCts.Token);
+            }
+            catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested)
+            {
+                _logger.LogError("Upload to Tonie Cloud timed out after 10 minutes for job {JobId}", jobId);
+                await jobService.FailJobAsync(jobId,
+                    "Upload timed out after 10 minutes. Please try again or use a smaller file.", ct);
+                return;
+            }
 
             audioStream.Dispose();
 

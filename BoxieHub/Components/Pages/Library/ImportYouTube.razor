@@ -1,6 +1,7 @@
-t@page "/library/import/youtube"
+@page "/library/import/youtube"
 @rendermode InteractiveServer
 @using BoxieHub.Services.Import
+@using BoxieHub.Services
 @using BoxieHub.Models
 @using System.Security.Claims
 @using Microsoft.AspNetCore.Authorization
@@ -10,6 +11,7 @@ t@page "/library/import/youtube"
 @inject AuthenticationStateProvider AuthStateProvider
 @inject NavigationManager Navigation
 @inject ILogger<ImportYouTube> Logger
+@inject IToastService ToastService
 @attribute [Authorize]
 @implements IDisposable
 
@@ -363,6 +365,11 @@ private System.Threading.Timer? pollTimer;
 
             Logger.LogInformation("Started YouTube import job {JobId} with category {Category}", job.Id, selectedCategory);
 
+            // Show success toast
+            ToastService.ShowSuccess(
+                $"Import started for: {customTitle}",
+                "Import Started");
+
             // Add to recent jobs list
             recentJobs.Insert(0, job);
             
@@ -381,6 +388,11 @@ private System.Threading.Timer? pollTimer;
         {
             Logger.LogError(ex, "Failed to start YouTube import");
             validationError = ex.Message;
+            
+            // Show error toast
+            ToastService.ShowError(
+                $"Failed to start import: {ex.Message}",
+                "Import Failed");
         }
         finally
         {

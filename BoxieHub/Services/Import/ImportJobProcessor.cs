@@ -323,16 +323,31 @@ public class ImportJobProcessor : BackgroundService
 
                 if (existingFile != null)
                 {
-                    // Reuse existing file
-                    var storageProvider = await storagePreferenceService.GetDefaultProviderAsync(job.UserId, ct);
-                    libraryItem = await mediaLibraryService.AddExistingFileToLibraryAsync(
-                        job.UserId,
-                        existingFile.Id,
-                        libraryItemDto,
-                        ct);
+                    // Check if user already has a library item for this file
+                    var existingUserLibraryItem = await dbContext.MediaLibraryItems
+                        .FirstOrDefaultAsync(m => m.UserId == job.UserId && 
+                                                   m.FileUploadId == existingFile.Id, ct);
+                    
+                    if (existingUserLibraryItem != null)
+                    {
+                        // User already has this in their library - reuse it!
+                        libraryItem = existingUserLibraryItem;
+                        _logger.LogInformation("User already has library item {ItemId} for file {FileId} - reusing",
+                            libraryItem.Id, existingFile.Id);
+                    }
+                    else
+                    {
+                        // Reuse existing file but create new library item for this user
+                        var storageProvider = await storagePreferenceService.GetDefaultProviderAsync(job.UserId, ct);
+                        libraryItem = await mediaLibraryService.AddExistingFileToLibraryAsync(
+                            job.UserId,
+                            existingFile.Id,
+                            libraryItemDto,
+                            ct);
 
-                    _logger.LogInformation("Reused existing file {FileId} for library item {ItemId}",
-                        existingFile.Id, libraryItem.Id);
+                        _logger.LogInformation("Created new library item {ItemId} reusing existing file {FileId}",
+                            libraryItem.Id, existingFile.Id);
+                    }
                 }
                 else if (audioStream != null)
                 {

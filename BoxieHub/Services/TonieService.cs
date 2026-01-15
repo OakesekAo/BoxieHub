@@ -262,6 +262,11 @@ public class TonieService : ITonieService
 
         try
         {
+            _logger.LogInformation("Uploading audio '{Title}' to Tonie {TonieId} (Size: {Size} bytes)", 
+                chapterTitle, tonieId, audioStream.Length);
+            
+            var startTime = DateTimeOffset.UtcNow;
+            
             var result = await _boxieCloudClient.SyncAudioAsync(
                 credentials.Username,
                 credentials.Password,
@@ -271,6 +276,10 @@ public class TonieService : ITonieService
                 chapterTitle,
                 ct);
 
+            var elapsed = DateTimeOffset.UtcNow - startTime;
+            _logger.LogInformation("Upload to Tonie Cloud completed in {Elapsed}s - Success: {Success}", 
+                elapsed.TotalSeconds, result.Success);
+
             if (result.Success)
             {
                 _logger.LogInformation("Successfully uploaded audio '{Title}' to Tonie {TonieId}", chapterTitle, tonieId);
@@ -278,17 +287,22 @@ public class TonieService : ITonieService
                 // Refresh this specific Tonie from API
                 await RefreshTonieFromApiAsync(userId, householdId, tonieId, ct);
             }
+            else
+            {
+                _logger.LogWarning("Upload to Tonie {TonieId} failed: {Message} - {Details}", 
+                    tonieId, result.Message, result.ErrorDetails);
+            }
 
             return result;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error uploading audio to Tonie {TonieId}", tonieId);
+            _logger.LogError(ex, "Error uploading audio to Tonie {TonieId}: {Message}", tonieId, ex.Message);
             return new SyncResultDto
             {
                 Success = false,
                 Message = "Upload failed",
-                ErrorDetails = ex.Message,
+                ErrorDetails = $"{ex.GetType().Name}: {ex.Message}",
                 TracksProcessed = 0
             };
         }
@@ -332,6 +346,22 @@ public class TonieService : ITonieService
                 ct);
 
             _logger.LogInformation("Successfully deleted chapter {ChapterId} from Tonie {TonieId}", chapterId, tonieId);
+            
+            // Update usage tracking - mark chapter as no longer used
+            await using var dbContext = await _dbContextFactory.CreateDbContextAsync(ct);
+            var usageToDelete = await dbContext.MediaLibraryUsages
+                .Where(u => u.HouseholdId == householdId && 
+                           u.TonieId == tonieId && 
+                           u.ChapterId == chapterId)
+                .ToListAsync(ct);
+            
+            if (usageToDelete.Any())
+            {
+                dbContext.MediaLibraryUsages.RemoveRange(usageToDelete);
+                await dbContext.SaveChangesAsync(ct);
+                _logger.LogInformation("Removed {Count} usage tracking entries for chapter {ChapterId}", 
+                    usageToDelete.Count, chapterId);
+            }
             
             // Refresh this specific Tonie from API
             await RefreshTonieFromApiAsync(userId, householdId, tonieId, ct);

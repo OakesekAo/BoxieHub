@@ -4,6 +4,7 @@
 @using BoxieHub.Models.BoxieCloud
 @using BoxieHub.Services
 @using BoxieHub.Services.Storage
+@using BoxieHub.Services.Tonie
 @using BoxieHub.Helpers
 @using System.Security.Claims
 @using Microsoft.AspNetCore.Authorization
@@ -12,10 +13,13 @@
 @inject IMediaLibraryService MediaLibraryService
 @inject IFileStorageService FileStorageService
 @inject IStoragePreferenceService StoragePreferenceService
+@inject ITonieUploadJobService UploadJobService
+@inject TonieUploadJobProcessor JobProcessor
 @inject AuthenticationStateProvider AuthStateProvider
 @inject NavigationManager Navigation
 @inject ILogger<Upload> Logger
 @inject IJSRuntime JS
+@inject IToastService ToastService
 @attribute [Authorize]
 
 <PageTitle>Upload Audio - BoxieHub</PageTitle>
@@ -534,9 +538,6 @@
         isUploading = true;
         uploadResult = null;
 
-        // Buffer file data if we need to save to library (prevents "file already read" error)
-        byte[]? fileBuffer = null;
-
         try
         {
             var authState = await AuthStateProvider.GetAuthenticationStateAsync();
@@ -548,78 +549,51 @@
                 isUploading = false;
                 return;
             }
-            
-            // If we're going to save to library, buffer the file data first
-            if (addToLibrary && selectedFile != null && selectedLibraryItem == null)
-            {
-                Logger.LogInformation("Buffering file data for library save");
-                const int maxAllowedSize = 200 * 1024 * 1024;
-                using var tempStream = selectedFile.OpenReadStream(maxAllowedSize);
-                using var ms = new MemoryStream();
-                await tempStream.CopyToAsync(ms);
-                fileBuffer = ms.ToArray();
-                Logger.LogInformation("File buffered: {Size} bytes", fileBuffer.Length);
-            }
 
-            Stream stream;
-            bool isFromLibrary = false;
+            MediaLibraryItem? libraryItem = null;
 
-            // Get stream from either file upload or library
-            if (selectedLibraryItem != null && selectedLibraryItem.FileUpload != null)
+            // Step 1: Ensure file is in library
+            if (selectedLibraryItem != null)
             {
-                // Use library item - download from storage
-                var fileUpload = selectedLibraryItem.FileUpload;
-                
-                if (fileUpload.Provider == StorageProvider.Database && fileUpload.Data != null)
-                {
-                    // Legacy: stored in database
-                    stream = new MemoryStream(fileUpload.Data);
-                    Logger.LogInformation("Uploading from library (Database): {Title}", selectedLibraryItem.Title);
-                }
-                else if (!string.IsNullOrEmpty(fileUpload.StoragePath))
-                {
-                    // Download from external storage (S3, Dropbox, GDrive)
-                    try
-                    {
-                        Logger.LogInformation("Downloading file from {Provider}: {StoragePath}", 
-                            fileUpload.Provider, fileUpload.StoragePath);
-                        
-                        stream = await FileStorageService.DownloadFileAsync(
-                            fileUpload.StoragePath,
-                            fileUpload.UserStorageAccountId);
-                        
-                        Logger.LogInformation("Successfully downloaded from {Provider}, now uploading to Tonie", 
-                            fileUpload.Provider);
-                    }
-                    catch (Exception ex)
-                    {
-                        Logger.LogError(ex, "Failed to download file from storage: {StoragePath}", 
-                            fileUpload.StoragePath);
-                        validationError = $"Failed to download file from storage: {ex.Message}";
-                        isUploading = false;
-                        return;
-                    }
-                }
-                else
-                {
-                    validationError = "Library item has no file data or storage path";
-                    isUploading = false;
-                    return;
-                }
-                
-                isFromLibrary = true;
-            }
-            else if (fileBuffer != null)
-            {
-                // Use buffered file data
-                stream = new MemoryStream(fileBuffer);
-                Logger.LogInformation("Using buffered file data for upload");
+                // Already in library, use it
+                libraryItem = selectedLibraryItem;
+                Logger.LogInformation("Using existing library item {ItemId}: {Title}", 
+                    libraryItem.Id, libraryItem.Title);
             }
             else if (selectedFile != null)
             {
-                // Use uploaded file (only if not buffered)
-                stream = selectedFile.OpenReadStream(maxAllowedSize: 200 * 1024 * 1024);
-                Logger.LogInformation("Using direct file stream for upload");
+                // Upload new file to library first
+                Logger.LogInformation("Uploading new file to library: {FileName}", selectedFile.Name);
+                
+                const int maxAllowedSize = 200 * 1024 * 1024;
+                using var stream = selectedFile.OpenReadStream(maxAllowedSize);
+                
+                var libraryItemDto = new MediaLibraryItemDto
+                {
+                    Title = chapterTitle,
+                    Description = $"Uploaded for {tonie?.Name}",
+                    Category = "Music", // Default category
+                    Tags = new List<string> { "tonie-upload" },
+                    ContentType = selectedFile.ContentType,
+                    OriginalFileName = selectedFile.Name,
+                    FileSizeBytes = selectedFile.Size,
+                    DurationSeconds = (float)audioDurationSeconds
+                };
+
+                var storageProvider = await StoragePreferenceService.GetDefaultProviderAsync(userId);
+                
+                libraryItem = await MediaLibraryService.AddToLibraryAsync(
+                    userId,
+                    stream,
+                    libraryItemDto,
+                    storageProvider);
+
+                Logger.LogInformation("File uploaded to library: {ItemId}", libraryItem.Id);
+                
+                // Show toast
+                ToastService.ShowSuccess(
+                    $"'{chapterTitle}' uploaded to library",
+                    "Step 1/2 Complete");
             }
             else
             {
@@ -628,78 +602,42 @@
                 return;
             }
 
-            using (stream)
-            {
-                // Upload to Tonie Cloud
-                uploadResult = await TonieService.UploadAudioToTonieAsync(
-                    userId,
-                    HouseholdId,
-                    TonieId,
-                    stream,
-                    chapterTitle);
+            // Step 2: Create background upload job
+            var job = await UploadJobService.CreateUploadJobAsync(
+                userId,
+                libraryItem.Id,
+                HouseholdId,
+                TonieId,
+                chapterTitle);
 
-                if (uploadResult.Success)
-                {
-                    Logger.LogInformation("Successfully uploaded '{Title}' to Tonie {TonieId}", chapterTitle, TonieId);
-                    
-                    // Track usage if from library
-                    if (isFromLibrary && selectedLibraryItem != null)
-                    {
-                        try
-                        {
-                            await MediaLibraryService.TrackUsageAsync(
-                                selectedLibraryItem.Id,
-                                HouseholdId,
-                                TonieId,
-                                chapterTitle, // Using chapterTitle as chapterId for now
-                                tonie?.Name,
-                                chapterTitle);
-                            Logger.LogInformation("Tracked library usage for item {ItemId}", selectedLibraryItem.Id);
-                        }
-                        catch (Exception ex)
-                        {
-                            Logger.LogWarning(ex, "Failed to track library usage");
-                            // Don't fail the upload if tracking fails
-                        }
-                    }
-                    
-                    // Save to library if requested (only for new uploads, not library items)
-                    if (addToLibrary && fileBuffer != null && !isFromLibrary && selectedFile != null)
-                    {
-                        savedToLibrary = await SaveToLibraryAsync(userId, fileBuffer, selectedFile.ContentType, 
-                            selectedFile.Name, chapterTitle);
-                        if (savedToLibrary)
-                        {
-                            Logger.LogInformation("Audio also saved to library for reuse");
-                        }
-                        else
-                        {
-                            Logger.LogWarning("Failed to save audio to library, but Tonie upload was successful");
-                        }
-                    }
-                }
-                else
-                {
-                    Logger.LogWarning("Upload failed for '{Title}': {Error}", chapterTitle, uploadResult.ErrorDetails);
-                }
-            }
+            // Step 3: Enqueue the job
+            await JobProcessor.EnqueueJobAsync(job.Id);
+
+            Logger.LogInformation("Created upload job {JobId} for Tonie {TonieId}", job.Id, TonieId);
+
+            // Show toast
+            ToastService.ShowInfo(
+                $"'{chapterTitle}' is being uploaded in the background",
+                "Upload Started");
+
+            // Step 4: Redirect to progress page
+            Navigation.NavigateTo($"/tonies/upload-progress/{job.Id}");
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "Error uploading audio file");
-            uploadResult = new SyncResultDto
-            {
-                Success = false,
-                Message = "Upload failed",
-                ErrorDetails = ex.Message
-            };
+            Logger.LogError(ex, "Error starting upload");
+            validationError = ex.Message;
+            
+            // Show error toast
+            ToastService.ShowError(
+                $"Failed to start upload: {ex.Message}",
+                "Upload Failed");
         }
         finally
         {
             isUploading = false;
             selectedFile = null;
             selectedLibraryItem = null;
-            fileBuffer = null; // Clear buffer
         }
     }
 

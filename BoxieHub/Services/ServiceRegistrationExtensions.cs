@@ -47,6 +47,9 @@ public static class ServiceRegistrationExtensions
         services.AddScoped<IMediaLibraryService, MediaLibraryService>();
         services.AddScoped<IStoragePreferenceService, StoragePreferenceService>();
         
+        // Register toast notification service
+        services.AddScoped<IToastService, ToastService>();
+        
         // Register file storage services
         services.AddFileStorageServices(configuration);
         

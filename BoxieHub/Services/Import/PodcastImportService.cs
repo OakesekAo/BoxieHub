@@ -282,15 +282,36 @@ public class PodcastImportService : IPodcastImportService
         {
             try
             {
-                var durationStr = itunesDuration.GetObject<XmlElement>()?.InnerText;
+                var durationStr = itunesDuration.GetObject<XmlElement>()?.InnerText?.Trim();
                 if (!string.IsNullOrEmpty(durationStr))
                 {
-                    // Format can be: seconds, HH:MM:SS, or MM:SS
+                    // Format can be: seconds (e.g., "1234"), HH:MM:SS (e.g., "1:30:45"), or MM:SS (e.g., "16:59")
+                    
+                    // Try parsing as plain seconds first
                     if (int.TryParse(durationStr, out var seconds))
                         return TimeSpan.FromSeconds(seconds);
 
-                    if (TimeSpan.TryParse(durationStr, out var duration))
-                        return duration;
+                    // Try parsing as time format (HH:MM:SS or MM:SS or H:MM:SS)
+                    var parts = durationStr.Split(':');
+                    if (parts.Length == 2)
+                    {
+                        // MM:SS format
+                        if (int.TryParse(parts[0], out var minutes) && 
+                            int.TryParse(parts[1], out var secs))
+                        {
+                            return new TimeSpan(0, minutes, secs);
+                        }
+                    }
+                    else if (parts.Length == 3)
+                    {
+                        // HH:MM:SS format
+                        if (int.TryParse(parts[0], out var hours) && 
+                            int.TryParse(parts[1], out var mins) && 
+                            int.TryParse(parts[2], out var secs))
+                        {
+                            return new TimeSpan(hours, mins, secs);
+                        }
+                    }
                 }
             }
             catch { }
