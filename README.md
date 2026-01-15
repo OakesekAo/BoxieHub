@@ -1,8 +1,8 @@
 # BoxieHub ????
 
-**Self-hosted media management platform for Toniebox Creative Tonies**
+**Your personal media hub for Toniebox Creative Tonies**
 
-BoxieHub is a modern, self-hosted web application that simplifies managing audio content for your Toniebox Creative Tonies. Import from YouTube, organize your media library, and sync content to your Tonies—all from one beautiful interface.
+BoxieHub makes it easy to manage audio content for your family's Toniebox Creative Tonies. Import from YouTube, organize your media library, and sync content to your Tonies—all from one intuitive web app that runs in your home.
 
 [![.NET 8](https://img.shields.io/badge/.NET-8.0-512BD4?logo=dotnet)](https://dotnet.microsoft.com/)
 [![Blazor](https://img.shields.io/badge/Blazor-Interactive-512BD4?logo=blazor)](https://dotnet.microsoft.com/apps/aspnet/web-apps/blazor)
@@ -33,11 +33,11 @@ BoxieHub is a modern, self-hosted web application that simplifies managing audio
 - **External Cloud** - Dropbox and Google Drive integration (coming soon)
 - **User Preferences** - Choose default storage per user
 
-### ?? **Security & Privacy**
-- **Self-Hosted** - Your data stays on your server
-- **Encrypted Credentials** - Tonie account passwords encrypted with ASP.NET Data Protection
-- **Multi-User Support** - Each user has isolated content and settings
-- **Role-Based Access** - Admin and user roles
+### ?? **Privacy & Control**
+- **Run at Home** - Your data stays on your computer/network
+- **Encrypted Credentials** - Tonie account passwords protected with ASP.NET Data Protection
+- **Family Friendly** - Set up once, entire household can use it
+- **No Cloud Required** - Everything runs locally (except Tonie API calls)
 
 ### ?? **Modern Architecture**
 - **Blazor Server + WebAssembly** - Fast, interactive UI
@@ -77,14 +77,76 @@ BoxieHub is a modern, self-hosted web application that simplifies managing audio
 
 ## ?? Quick Start
 
-### Prerequisites
+### How to Run BoxieHub
 
+**Choose your setup method:**
+
+1. **?? Railway** (Easiest) - Cloud hosting, always accessible (~$5-20/month)
+2. **?? Docker** - Run on your home computer
+3. **?? Manual** - Install on Windows/Mac/Linux (advanced)
+
+---
+
+### Option 1: Railway (Recommended for Most Families)
+
+[![Deploy on Railway](https://railway.app/button.svg)](https://railway.app/new/template/boxiehub)
+
+**Best for:** Families who want it to "just work"
+
+**What you get:**
+- ? Always accessible (from home or away)
+- ? Automatic backups
+- ? No computer needs to stay on
+- ? HTTPS with custom domain support
+
+**Cost:** ~$5-20/month depending on usage (first $5 free)
+
+**Steps:**
+1. Click "Deploy on Railway"
+2. Connect your GitHub account
+3. Wait ~3 minutes for setup
+4. Open the URL and register
+5. Start managing your Tonies!
+
+**?? Detailed guide:** [docs/DEPLOY_RAILWAY.md](docs/DEPLOY_RAILWAY.md)
+
+---
+
+### Option 2: Docker (Run at Home)
+
+**Best for:** Families with a computer that stays on (home server, NAS, old laptop)
+
+**Prerequisites:**
+- [Docker Desktop](https://www.docker.com/products/docker-desktop)
+- A [Toniebox account](https://meine.tonies.com/)
+
+```bash
+# Clone the repository
+git clone https://github.com/OakesekAo/BoxieHub.git
+cd BoxieHub
+
+# Start all services (PostgreSQL + MinIO + App)
+docker-compose up -d
+
+# Wait for services to start (~30 seconds)
+# Open browser to http://localhost:5000
+```
+
+That's it! PostgreSQL and MinIO storage are automatically configured.
+
+**?? Detailed guide:** [docs/DEPLOY_DOCKER.md](docs/DEPLOY_DOCKER.md)
+
+---
+
+### Option 3: Manual Setup (Advanced Users)
+
+**Prerequisites:**
 - [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)
 - [PostgreSQL 14+](https://www.postgresql.org/download/)
 - [MinIO](https://min.io/) or S3-compatible storage (optional)
 - A [Toniebox account](https://meine.tonies.com/)
 
-### Installation
+**Manual Setup Steps:**
 
 1. **Clone the repository**
    ```bash
@@ -92,13 +154,25 @@ BoxieHub is a modern, self-hosted web application that simplifies managing audio
    cd BoxieHub
    ```
 
-2. **Set up the database**
+2. **Set up PostgreSQL**
    ```bash
    # Install PostgreSQL, then create a database
    createdb boxiehub
    ```
 
-3. **Configure connection string**
+3. **Set up MinIO (optional)**
+   ```bash
+   # Using Docker
+   docker run -d \
+     --name minio \
+     -p 9000:9000 \
+     -p 9001:9001 \
+     -e "MINIO_ROOT_USER=minioadmin" \
+     -e "MINIO_ROOT_PASSWORD=minioadmin" \
+     minio/minio server /data --console-address ":9001"
+   ```
+
+4. **Configure application**
    
    Create `BoxieHub/appsettings.Development.json`:
    ```json
@@ -117,19 +191,25 @@ BoxieHub is a modern, self-hosted web application that simplifies managing audio
    }
    ```
 
-4. **Run database migrations**
+5. **Run database migrations**
    ```bash
    cd BoxieHub
    dotnet ef database update
    ```
 
-5. **Start the application**
+6. **Start the application**
    ```bash
    dotnet run
    ```
 
-6. **Open your browser**
+7. **Open your browser**
    Navigate to `https://localhost:7120` and register an account!
+
+**For detailed setup guides:**
+- [Railway Deployment Guide](docs/DEPLOY_RAILWAY.md)
+- [Docker Deployment Guide](docs/DEPLOY_DOCKER.md)
+- [Manual Deployment Guide](docs/DEPLOY_MANUAL.md)
+- [Cost Optimization Tips](docs/COST_OPTIMIZATION.md)
 
 ---
 
@@ -205,49 +285,58 @@ dotnet user-secrets set "S3Storage:SecretKey" "your-secret-key"
 
 ## ??? Roadmap
 
-### ? Phase 1: Foundation (Complete)
+### ? Phase 1-3: Foundation & Core Features (Complete)
 - [x] User authentication & authorization
-- [x] PostgreSQL database integration
-- [x] Toniebox account management
-- [x] Basic Tonie sync from Tonie Cloud API
-
-### ? Phase 2: Media Library (Complete)
-- [x] Upload audio files
+- [x] PostgreSQL database with EF Core
+- [x] Toniebox account management (multi-account support)
+- [x] Tonie sync with smart caching
 - [x] Media library with tags & categories
-- [x] S3-compatible storage integration
-- [x] Reusable content system
-
-### ? Phase 3: YouTube Import (Complete)
-- [x] Single video import
-- [x] Playlist batch import
-- [x] Background processing
-- [x] Progress tracking
-
-### ?? Phase 4: Advanced Features (In Progress)
+- [x] S3-compatible storage (MinIO, Railway, AWS)
+- [x] YouTube single video import
+- [x] YouTube playlist batch import (up to 50 videos)
+- [x] Background job processing
+- [x] Real-time progress tracking
 - [x] Custom Tonie images
 - [x] Chapter editing & reordering
-- [ ] Podcast RSS feed import
+- [x] Podcast RSS feed import
+
+### ?? Phase 4: Infrastructure & Optimization (Current)
+**Goal:** Improve performance, reduce costs, fix critical bugs
+
+- [ ] Background job processing for Tonie uploads (fixes timeout errors)
+- [ ] Audio compression (mono 64kbps for Toniebox)
+- [ ] Usage analytics dashboard (help users track their bandwidth/storage)
+- [ ] Multi-user accounts (family sharing)
+- [ ] Automatic podcast episode sync
 - [ ] Direct URL audio import
-- [ ] Bulk operations
 
-### ?? Phase 5: Cloud Storage (Planned)
-- [ ] Dropbox integration
-- [ ] Google Drive integration
-- [ ] OneDrive support
-- [ ] Storage quota management
+### ?? Phase 5: Advanced Features (Planned)
+**Goal:** Power user features and automation
 
-### ?? Phase 6: Polish & UX (Planned)
-- [ ] Mobile app (MAUI)
-- [ ] Dark mode
+- [ ] Scheduled uploads (cron-based Tonie updates)
+- [ ] Audio splitting (divide long files into chapters)
+- [ ] Batch operations (bulk delete, bulk tag)
 - [ ] Advanced search & filters
-- [ ] Audio editing (trim, normalize)
-- [ ] Batch audio processing
+- [ ] Webhook support (trigger actions on events)
 
-### ?? Phase 7: Community (Future)
-- [ ] Shared media library (opt-in)
-- [ ] Content recommendations
-- [ ] User profiles & avatars
-- [ ] Activity feed
+### ?? Phase 6: Cloud Storage Integrations (Planned)
+**Goal:** More storage options for users
+
+- [ ] Dropbox OAuth integration
+- [ ] Google Drive OAuth integration
+- [ ] OneDrive support
+- [ ] Storage migration tools
+
+### ?? Phase 7: Polish & Community (Future)
+**Goal:** Better UX and community features
+
+- [ ] Mobile-responsive improvements
+- [ ] Dark mode
+- [ ] Audio waveform visualization
+- [ ] API access (REST API for automation)
+- [ ] Community feature requests
+
+> **Note:** For managed hosting options and premium features roadmap, see [docs/MANAGED_HOSTING.md](docs/MANAGED_HOSTING.md)
 
 ---
 
