@@ -285,11 +285,17 @@ public class PodcastImportService : IPodcastImportService
                 var durationStr = itunesDuration.GetObject<XmlElement>()?.InnerText?.Trim();
                 if (!string.IsNullOrEmpty(durationStr))
                 {
+                    _logger.LogDebug("Parsing duration string: '{Duration}' for item: {Title}", 
+                        durationStr, item.Title?.Text);
+                    
                     // Format can be: seconds (e.g., "1234"), HH:MM:SS (e.g., "1:30:45"), or MM:SS (e.g., "16:59")
                     
                     // Try parsing as plain seconds first
                     if (int.TryParse(durationStr, out var seconds))
+                    {
+                        _logger.LogDebug("Parsed as seconds: {Seconds}s", seconds);
                         return TimeSpan.FromSeconds(seconds);
+                    }
 
                     // Try parsing as time format (HH:MM:SS or MM:SS or H:MM:SS)
                     var parts = durationStr.Split(':');
@@ -299,7 +305,9 @@ public class PodcastImportService : IPodcastImportService
                         if (int.TryParse(parts[0], out var minutes) && 
                             int.TryParse(parts[1], out var secs))
                         {
-                            return new TimeSpan(0, minutes, secs);
+                            var result = new TimeSpan(0, minutes, secs);
+                            _logger.LogDebug("Parsed as MM:SS: {Duration}", result);
+                            return result;
                         }
                     }
                     else if (parts.Length == 3)
@@ -309,12 +317,19 @@ public class PodcastImportService : IPodcastImportService
                             int.TryParse(parts[1], out var mins) && 
                             int.TryParse(parts[2], out var secs))
                         {
-                            return new TimeSpan(hours, mins, secs);
+                            var result = new TimeSpan(hours, mins, secs);
+                            _logger.LogDebug("Parsed as HH:MM:SS: {Duration}", result);
+                            return result;
                         }
                     }
+                    
+                    _logger.LogWarning("Could not parse duration string: '{Duration}'", durationStr);
                 }
             }
-            catch { }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Error extracting duration");
+            }
         }
 
         return TimeSpan.Zero; // Unknown duration

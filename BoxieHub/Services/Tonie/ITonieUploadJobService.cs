@@ -24,11 +24,19 @@ public interface ITonieUploadJobService
     Task<TonieUploadJob?> GetJobByIdAsync(int jobId, CancellationToken ct = default);
     
     /// <summary>
-    /// Get all upload jobs for a user
+    /// Get all upload jobs for a user (with pagination)
     /// </summary>
     Task<List<TonieUploadJob>> GetUserJobsAsync(
         string userId,
         int take = 50,
+        int skip = 0,
+        CancellationToken ct = default);
+    
+    /// <summary>
+    /// Get total count of user's upload jobs
+    /// </summary>
+    Task<int> GetUserJobCountAsync(
+        string userId,
         CancellationToken ct = default);
     
     /// <summary>

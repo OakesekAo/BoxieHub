@@ -75,6 +75,7 @@ public class TonieUploadJobService : ITonieUploadJobService
     public async Task<List<TonieUploadJob>> GetUserJobsAsync(
         string userId,
         int take = 50,
+        int skip = 0,
         CancellationToken ct = default)
     {
         await using var dbContext = await _dbContextFactory.CreateDbContextAsync(ct);
@@ -83,8 +84,20 @@ public class TonieUploadJobService : ITonieUploadJobService
             .Include(j => j.MediaLibraryItem)
             .Where(j => j.UserId == userId)
             .OrderByDescending(j => j.Created)
+            .Skip(skip)
             .Take(take)
             .ToListAsync(ct);
+    }
+
+    public async Task<int> GetUserJobCountAsync(
+        string userId,
+        CancellationToken ct = default)
+    {
+        await using var dbContext = await _dbContextFactory.CreateDbContextAsync(ct);
+
+        return await dbContext.TonieUploadJobs
+            .Where(j => j.UserId == userId)
+            .CountAsync(ct);
     }
 
     public async Task<List<TonieUploadJob>> GetActiveJobsAsync(
