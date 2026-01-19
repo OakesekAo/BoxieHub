@@ -73,55 +73,94 @@ public class YouTubeImportService : IYouTubeImportService
         try
         {
             _logger.LogInformation("Downloading audio from YouTube: {Url}", url);
-            
+
             // Get stream manifest
             var streamManifest = await _youtube.Videos.Streams.GetManifestAsync(url, ct);
-            
-            // Get LOWEST bitrate audio stream for Toniebox (mono speaker, no need for stereo/high quality)
-            // Typical YouTube audio streams:
-            // - 160 kbps (stereo, Opus) - highest quality
-            // - 128 kbps (stereo, M4A)
-            // - 70 kbps (stereo, Opus)
-            // - 50 kbps (mono, Opus) - optimal for Toniebox!
-            var audioStreamInfo = streamManifest
+
+            _logger.LogInformation("Found {AudioCount} audio streams, {VideoCount} video streams, {MuxedCount} muxed streams",
+                streamManifest.GetAudioOnlyStreams().Count(),
+                streamManifest.GetVideoOnlyStreams().Count(),
+                streamManifest.GetMuxedStreams().Count());
+
+            // Strategy: Try multiple fallbacks for maximum compatibility
+            IStreamInfo? audioStreamInfo = null;
+
+            // 1. Try lowest bitrate M4A (optimal for Toniebox mono speaker)
+            audioStreamInfo = streamManifest
                 .GetAudioOnlyStreams()
-                .Where(s => s.Container == Container.Mp4) // Prefer M4A (compatible with Tonie Cloud)
-                .OrderBy(s => s.Bitrate) // Select LOWEST bitrate (saves bandwidth and storage)
+                .Where(s => s.Container == Container.Mp4)
+                .OrderBy(s => s.Bitrate)
                 .FirstOrDefault();
 
+            if (audioStreamInfo != null)
+            {
+                _logger.LogInformation("Strategy 1: Selected M4A audio stream at {Bitrate} kbps", 
+                    audioStreamInfo.Bitrate.KiloBitsPerSecond);
+            }
+
+            // 2. Fallback: Try any audio-only stream (lowest bitrate)
             if (audioStreamInfo == null)
             {
-                // Fallback: try any audio stream (still prefer lowest)
                 audioStreamInfo = streamManifest
                     .GetAudioOnlyStreams()
-                    .OrderBy(s => s.Bitrate) // Lowest first
+                    .OrderBy(s => s.Bitrate)
                     .FirstOrDefault();
+
+                if (audioStreamInfo != null)
+                {
+                    _logger.LogInformation("Strategy 2: Selected {Container} audio stream at {Bitrate} kbps", 
+                        audioStreamInfo.Container, audioStreamInfo.Bitrate.KiloBitsPerSecond);
+                }
+            }
+
+            // 3. Fallback: Extract audio from lowest quality muxed stream
+            if (audioStreamInfo == null)
+            {
+                audioStreamInfo = streamManifest
+                    .GetMuxedStreams()
+                    .OrderBy(s => s.Bitrate)
+                    .FirstOrDefault();
+
+                if (audioStreamInfo != null)
+                {
+                    _logger.LogWarning("Strategy 3: Using muxed stream (video+audio) at {Bitrate} kbps - will extract audio", 
+                        audioStreamInfo.Bitrate.KiloBitsPerSecond);
+                }
             }
 
             if (audioStreamInfo == null)
-                throw new InvalidOperationException("No audio stream available for this video");
+            {
+                var availableStreams = string.Join(", ", streamManifest.Streams.Select(s => 
+                    $"{s.GetType().Name}:{s.Container}:{s.Bitrate.KiloBitsPerSecond}kbps"));
 
-            _logger.LogInformation("Selected audio stream: {Bitrate} kbps, {Container} (optimized for Toniebox mono speaker)", 
-                audioStreamInfo.Bitrate.KiloBitsPerSecond, audioStreamInfo.Container);
+                _logger.LogError("No suitable audio stream found. Available streams: {Streams}", availableStreams);
+                throw new InvalidOperationException(
+                    $"No audio stream available for this video. Found {streamManifest.Streams.Count()} streams but none are compatible.");
+            }
+
+            _logger.LogInformation("Downloading stream: {Bitrate} kbps, {Container}, Size: {Size}", 
+                audioStreamInfo.Bitrate.KiloBitsPerSecond, 
+                audioStreamInfo.Container,
+                audioStreamInfo.Size);
 
             // Download to memory stream with progress reporting
             var memoryStream = new MemoryStream();
-            
+
             await _youtube.Videos.Streams.CopyToAsync(
                 audioStreamInfo, 
                 memoryStream, 
                 progress, 
                 ct);
-            
+
             memoryStream.Position = 0;
-            
-            _logger.LogInformation("Successfully downloaded audio ({Size} bytes)", memoryStream.Length);
-            
+
+            _logger.LogInformation("Successfully downloaded audio ({Size} MB)", memoryStream.Length / (1024.0 * 1024.0));
+
             return memoryStream;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to download audio from YouTube: {Url}", url);
+            _logger.LogError(ex, "Failed to download audio from YouTube: {Url}. Error: {Message}", url, ex.Message);
             throw;
         }
     }

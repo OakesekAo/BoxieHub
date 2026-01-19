@@ -1,40 +1,200 @@
 ﻿.pageStyle {
-    background: url(images/LandingPageBG.png);
-    background-repeat: no-repeat;
-    background-position: center;
-    background-size: cover;
+    min-height: 100vh;
 }
 
-.title{
-    font-family: var(--cf-title-font);
+/* Hero Section */
+.hero-section {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    min-height: 70vh;
+    display: flex;
+    align-items: center;
+}
+
+.hero-title {
+    font-size: 3.5rem;
+    font-weight: 700;
+    line-height: 1.2;
+}
+
+.hero-subtitle {
+    font-size: 1.75rem;
+    font-weight: 500;
+    opacity: 0.95;
+}
+
+.hero-icon {
+    font-size: 15rem;
+    opacity: 0.9;
+    animation: float 3s ease-in-out infinite;
+}
+
+@keyframes float {
+    0%, 100% {
+        transform: translateY(0px);
+    }
+    50% {
+        transform: translateY(-20px);
+    }
+}
+
+/* Features Section */
+.section-title {
+    font-size: 2.5rem;
+    font-weight: 700;
+    color: #333;
+    margin-bottom: 1rem;
+}
+
+.feature-card {
+    background: white;
+    padding: 2rem;
+    border-radius: 12px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+    height: 100%;
+}
+
+.feature-card:hover {
+    transform: translateY(-8px);
+    box-shadow: 0 12px 20px rgba(0, 0, 0, 0.15);
+}
+
+.feature-icon {
+    width: 70px;
+    height: 70px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 1.5rem;
+    font-size: 2rem;
+    color: white;
+}
+
+.feature-card h3 {
+    font-size: 1.5rem;
+    font-weight: 600;
+    margin-bottom: 1rem;
+    color: #333;
+}
+
+.feature-card p {
+    color: #666;
+    margin-bottom: 0;
+}
+
+/* How It Works Section */
+.step-card {
+    text-align: center;
+    padding: 2rem 1rem;
+}
+
+.step-number {
+    width: 60px;
+    height: 60px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.75rem;
+    font-weight: 700;
+    margin: 0 auto 1.5rem;
+}
+
+.step-card h4 {
+    font-size: 1.25rem;
+    font-weight: 600;
+    margin-bottom: 0.75rem;
+    color: #333;
+}
+
+.step-card p {
+    color: #666;
+    margin-bottom: 0;
+}
+
+/* Tech Stack Section */
+.tech-icons {
     font-size: 3rem;
-    color: var(--cf-title-color);
-    line-height: 3rem;
 }
 
-.subTitle {
-    font-family: var(--cf-body-font);
-    font-size: 1rem;
+.tech-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.tech-item span {
+    font-size: 0.9rem;
+    color: #666;
+    font-weight: 500;
 }
 
 .devicons {
-    font-size: 2rem;
+    font-size: 3rem;
 }
 
-@media (min-wiodth: 992px) {
-    .title {
-        font-family: var(--cf-title-font);
-        font-size: 3.5rem;
-        color: var(--cf-title-color);
-        line-height: 3rem;
-    }
+/* CTA Section */
+.cta-section {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+}
 
-    .subTitle {
-        font-family: var(--cf-body-font);
-        font-size: 1.5rem;
-    }
+.cta-section h2 {
+    color: white;
+    font-size: 2.5rem;
+    font-weight: 700;
+}
 
-    .devicons {
+/* Responsive Design */
+@media (max-width: 991px) {
+    .hero-title {
         font-size: 2.5rem;
     }
-})
+
+    .hero-subtitle {
+        font-size: 1.25rem;
+    }
+
+    .hero-icon {
+        font-size: 10rem;
+    }
+
+    .section-title {
+        font-size: 2rem;
+    }
+}
+
+@media (max-width: 576px) {
+    .hero-title {
+        font-size: 2rem;
+    }
+
+    .hero-subtitle {
+        font-size: 1.1rem;
+    }
+
+    .hero-icon {
+        font-size: 8rem;
+    }
+
+    .section-title {
+        font-size: 1.75rem;
+    }
+
+    .feature-icon {
+        width: 60px;
+        height: 60px;
+        font-size: 1.75rem;
+    }
+
+    .step-number {
+        width: 50px;
+        height: 50px;
+        font-size: 1.5rem;
+    }
+}

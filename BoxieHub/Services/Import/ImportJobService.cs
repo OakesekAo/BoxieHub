@@ -101,38 +101,87 @@ public class ImportJobService : IImportJobService
     public async Task<List<ImportJob>> CreateYouTubeBatchImportAsync(
         string userId,
         List<string> youtubeUrls,
+        string? category = null,
+        string? tags = null,
         CancellationToken ct = default)
     {
-        _logger.LogInformation("Creating batch YouTube import for user {UserId}: {Count} videos", 
-            userId, youtubeUrls.Count);
-        
+        _logger.LogInformation("Creating batch YouTube import for user {UserId}: {Count} videos (Category: {Category}, Tags: {Tags})", 
+            userId, youtubeUrls.Count, category ?? "Other", tags ?? "none");
+
+        // Fetch all video info in parallel for much faster processing
+        _logger.LogInformation("Fetching video info for {Count} videos in parallel", youtubeUrls.Count);
+        var videoInfoTasks = youtubeUrls.Select(url => 
+            _youtubeService.GetVideoInfoAsync(url, ct)).ToList();
+
+        var videoInfoResults = await Task.WhenAll(videoInfoTasks);
+
+        await using var dbContext = await _dbContextFactory.CreateDbContextAsync(ct);
+
         var jobs = new List<ImportJob>();
-        var errors = new List<string>();
-        
-        foreach (var url in youtubeUrls)
+
+        for (int i = 0; i < youtubeUrls.Count; i++)
         {
-            try
+            var url = youtubeUrls[i];
+            var videoInfo = videoInfoResults[i];
+
+            if (!videoInfo.IsValid)
             {
-                var job = await CreateYouTubeImportJobAsync(userId, url, null, null, null, ct);
-                jobs.Add(job);
+                _logger.LogWarning("Skipping invalid video {Url}: {Error}", url, videoInfo.ErrorMessage);
+                continue;
             }
-            catch (Exception ex)
+
+            // Truncate fields to fit database constraints
+            var title = videoInfo.Title;
+            if (title?.Length > 500)
             {
-                _logger.LogWarning(ex, "Failed to create import job for URL: {Url}", url);
-                errors.Add($"{url}: {ex.Message}");
-                // Continue with other videos even if one fails
+                title = title.Substring(0, 497) + "...";
+                _logger.LogWarning("Truncated title for video {VideoId} from {OriginalLength} to 500 characters", 
+                    videoInfo.Id, videoInfo.Title?.Length);
             }
+
+            var description = videoInfo.Description;
+            if (description?.Length > 2000)
+            {
+                description = description.Substring(0, 1997) + "...";
+                _logger.LogWarning("Truncated description for video {VideoId} from {OriginalLength} to 2000 characters", 
+                    videoInfo.Id, videoInfo.Description?.Length);
+            }
+
+            var thumbnailUrl = videoInfo.ThumbnailUrl;
+            if (thumbnailUrl?.Length > 1024)
+            {
+                thumbnailUrl = thumbnailUrl.Substring(0, 1024);
+                _logger.LogWarning("Truncated thumbnail URL for video {VideoId} from {OriginalLength} to 1024 characters", 
+                    videoInfo.Id, videoInfo.ThumbnailUrl?.Length);
+            }
+
+            var job = new ImportJob
+            {
+                UserId = userId,
+                Source = ImportSource.YouTube,
+                SourceUrl = url,
+                SourceTitle = title,
+                SourceDescription = description,
+                SourceThumbnailUrl = thumbnailUrl,
+                SourceDurationSeconds = (float)videoInfo.Duration.TotalSeconds,
+                Category = category ?? "Other", // Use provided category or default to "Other"
+                Tags = tags, // Apply tags to all videos in the batch
+                StatusEnum = ImportJobStatus.Pending,
+                StatusMessage = "Waiting to start...",
+                Created = DateTimeOffset.UtcNow
+            };
+
+            jobs.Add(job);
         }
-        
-        _logger.LogInformation("Created {SuccessCount}/{TotalCount} import jobs for batch import", 
-            jobs.Count, youtubeUrls.Count);
-        
-        if (errors.Any())
-        {
-            _logger.LogWarning("Batch import had {ErrorCount} failures: {Errors}", 
-                errors.Count, string.Join("; ", errors));
-        }
-        
+
+        // Save all jobs in one transaction - much faster than individual saves
+        _logger.LogInformation("Saving {Count} import jobs to database in bulk", jobs.Count);
+        dbContext.ImportJobs.AddRange(jobs);
+        await dbContext.SaveChangesAsync(ct);
+
+        _logger.LogInformation("Successfully created {SuccessCount}/{TotalCount} import jobs with category '{Category}'", 
+            jobs.Count, youtubeUrls.Count, category ?? "Other");
+
         return jobs;
     }
 

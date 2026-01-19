@@ -35,15 +35,20 @@ public class AudioAnalysisService : IAudioAnalysisService
 
             audioStream.Position = 0;
 
-            using var file = TagLib.File.Create(new StreamFileAbstraction("audio", audioStream));
-            
+            // Get proper file extension for TagLib detection
+            var extension = GetFileExtensionFromContentType(contentType);
+            var fileName = $"audio{extension}";
+
+            // Try to create file with mimetype hint first (most reliable)
+            using var file = TagLib.File.Create(new StreamFileAbstraction(fileName, audioStream), contentType, ReadStyle.Average);
+
             if (file.Properties?.Duration != null)
             {
                 var durationSeconds = (float)file.Properties.Duration.TotalSeconds;
-                
+
                 _logger.LogInformation("Detected audio duration: {Duration}s (Format: {Format}, Bitrate: {Bitrate} kbps)",
                     durationSeconds, file.Properties.MediaTypes, file.Properties.AudioBitrate);
-                
+
                 return durationSeconds;
             }
 
@@ -85,7 +90,11 @@ public class AudioAnalysisService : IAudioAnalysisService
 
             audioStream.Position = 0;
 
-            using var file = TagLib.File.Create(new StreamFileAbstraction("audio", audioStream));
+            // Get proper file extension for TagLib detection
+            var extension = GetFileExtensionFromContentType(contentType);
+            var fileName = $"audio{extension}";
+
+            using var file = TagLib.File.Create(new StreamFileAbstraction(fileName, audioStream), contentType, ReadStyle.Average);
             
             // Extract properties
             if (file.Properties != null)
@@ -173,8 +182,26 @@ public class AudioAnalysisService : IAudioAnalysisService
             "audio/wave"        // WAV (alternative)
         };
 
-        return supported.Contains(mimeType, StringComparer.OrdinalIgnoreCase);
-    }
+            return supported.Contains(mimeType, StringComparer.OrdinalIgnoreCase);
+        }
+
+        private string GetFileExtensionFromContentType(string contentType)
+        {
+            return contentType?.ToLowerInvariant() switch
+            {
+                "audio/mpeg" => ".mp3",
+                "audio/mp3" => ".mp3",
+                "audio/mp4" => ".m4a",
+                "audio/m4a" => ".m4a",
+                "audio/x-m4a" => ".m4a",
+                "audio/ogg" => ".ogg",
+                "audio/vorbis" => ".ogg",
+                "audio/wav" => ".wav",
+                "audio/x-wav" => ".wav",
+                "audio/wave" => ".wav",
+                _ => ".mp3" // Default fallback
+            };
+        }
 
     /// <summary>
     /// TagLib helper class for reading from Stream

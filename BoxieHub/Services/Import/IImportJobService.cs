@@ -24,6 +24,8 @@ public interface IImportJobService
     Task<List<ImportJob>> CreateYouTubeBatchImportAsync(
         string userId,
         List<string> youtubeUrls,
+        string? category = null,
+        string? tags = null,
         CancellationToken ct = default);
     
     /// <summary>

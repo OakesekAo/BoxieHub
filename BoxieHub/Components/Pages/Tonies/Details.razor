@@ -452,7 +452,7 @@
     private long selectedImageSize = 0;
     private string? imageUploadError;
     private bool isUploadingImage = false;
-    
+
     // Component refresh key - change to force re-render
     private Guid tonieHeaderKey = Guid.NewGuid();
 
@@ -625,10 +625,10 @@
             isDeleting = false;
             showDeleteModal = false;
             chapterToDelete = null;
-        }
-    }
+                }
+            }
 
-    private void ShowSuccess(string message)
+            private void ShowSuccess(string message)
     {
         statusMessage = message;
         isError = false;

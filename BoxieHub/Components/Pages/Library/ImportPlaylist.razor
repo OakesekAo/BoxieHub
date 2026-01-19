@@ -85,6 +85,46 @@
                     </div>
                 </div>
 
+                <!-- Category and Tags -->
+                <div class="card mb-3 border-warning">
+                    <div class="card-body">
+                        <h6 class="card-title">
+                            <i class="bi bi-tags"></i> Organize Your Imports
+                        </h6>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Category * <small class="text-muted">(applies to all videos)</small></label>
+                                <select class="form-select" @bind="selectedCategory" disabled="@isProcessing">
+                                    <option value="">-- Select Category --</option>
+                                    <option value="Music">Music</option>
+                                    <option value="Educational">Educational</option>
+                                    <option value="Story">Story</option>
+                                    <option value="Podcast">Podcast</option>
+                                    <option value="Other">Other</option>
+                                </select>
+                                @if (string.IsNullOrEmpty(selectedCategory))
+                                {
+                                    <small class="text-danger">
+                                        <i class="bi bi-exclamation-circle"></i> Please select a category before importing
+                                    </small>
+                                }
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Tags <small class="text-muted">(optional, comma-separated)</small></label>
+                                <input type="text" 
+                                       class="form-control" 
+                                       @bind="tags"
+                                       placeholder="e.g., kids, bedtime, favorites"
+                                       maxlength="200"
+                                       disabled="@isProcessing" />
+                                <small class="text-muted">
+                                    Add tags to help organize and find these videos later
+                                </small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Video Selection Controls -->
                 <div class="d-flex justify-content-between align-items-center mb-3">
                     <h6 class="mb-0">
@@ -155,11 +195,22 @@
                             <strong>@GetSelectedCount() videos selected</strong> 
                             • @FormatSelectedDuration() total duration
                             • ~@GetEstimatedFileSize() estimated size
+                            @if (!string.IsNullOrEmpty(selectedCategory))
+                            {
+                                <br />
+                                <small>
+                                    <i class="bi bi-folder"></i> Category: <strong>@selectedCategory</strong>
+                                    @if (!string.IsNullOrEmpty(tags))
+                                    {
+                                        <span class="ms-2"><i class="bi bi-tags"></i> Tags: <strong>@tags</strong></span>
+                                    }
+                                </small>
+                            }
                         </div>
                         <div class="col-md-4 text-end">
                             <button class="btn btn-primary btn-lg" 
                                     @onclick="StartBatchImport" 
-                                    disabled="@(isProcessing || GetSelectedCount() == 0)">
+                                    disabled="@(isProcessing || GetSelectedCount() == 0 || string.IsNullOrEmpty(selectedCategory))">
                                 @if (isProcessing)
                                 {
                                     <span class="spinner-border spinner-border-sm me-2"></span>
@@ -171,6 +222,12 @@
                                     <span>Import @GetSelectedCount() Videos</span>
                                 }
                             </button>
+                            @if (string.IsNullOrEmpty(selectedCategory) && GetSelectedCount() > 0)
+                            {
+                                <div class="text-danger small mt-2">
+                                    <i class="bi bi-exclamation-triangle"></i> Select a category first
+                                </div>
+                            }
                         </div>
                     </div>
                 </div>
@@ -187,6 +244,8 @@
     private bool isLoadingPreview;
     private bool isProcessing;
     private System.Threading.Timer? debounceTimer;
+    private string selectedCategory = string.Empty;
+    private string tags = string.Empty;
 
     private void OnUrlChanged(ChangeEventArgs e)
     {
@@ -336,8 +395,14 @@
         if (playlistInfo == null || GetSelectedCount() == 0)
             return;
 
+        if (string.IsNullOrEmpty(selectedCategory))
+        {
+            validationError = "Please select a category";
+            return;
+        }
+
         isProcessing = true;
-        
+
         try
         {
             var authState = await AuthStateProvider.GetAuthenticationStateAsync();
@@ -355,18 +420,23 @@
                 .Select(v => $"https://www.youtube.com/watch?v={v.Id}")
                 .ToList();
 
-            Logger.LogInformation("Starting batch import of {Count} videos from playlist", selectedUrls.Count);
+            Logger.LogInformation("Starting batch import of {Count} videos from playlist with category {Category}", 
+                selectedUrls.Count, selectedCategory);
 
-            // Create batch import jobs
-            var jobs = await ImportJobService.CreateYouTubeBatchImportAsync(userId, selectedUrls);
+            // Create all jobs at once (parallel fetch + bulk insert) with category and tags
+            var jobs = await ImportJobService.CreateYouTubeBatchImportAsync(
+                userId, 
+                selectedUrls, 
+                selectedCategory, 
+                tags);
 
-            // Enqueue all jobs for background processing
-            foreach (var job in jobs)
-            {
-                await JobProcessor.EnqueueJobAsync(job.Id);
-            }
+            Logger.LogInformation("Created {Count} import jobs, enqueueing for processing", jobs.Count);
 
-            Logger.LogInformation("Successfully started batch import of {Count} videos", jobs.Count);
+            // Enqueue all jobs in parallel for instant queueing
+            var enqueueTasks = jobs.Select(job => JobProcessor.EnqueueJobAsync(job.Id)).ToList();
+            await Task.WhenAll(enqueueTasks);
+
+            Logger.LogInformation("Successfully enqueued {Count} import jobs for background processing", jobs.Count);
 
             // Redirect to import page to see progress
             Navigation.NavigateTo("/library/import/youtube");

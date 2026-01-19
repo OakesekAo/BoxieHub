@@ -37,6 +37,12 @@ public class ImportJob
     /// </summary>
     [MaxLength(50)]
     public string? Category { get; set; }
+
+    /// <summary>
+    /// Optional tags for organizing content (comma-separated)
+    /// </summary>
+    [MaxLength(200)]
+    public string? Tags { get; set; }
     
     /// <summary>
     /// Current status as string (for database storage)

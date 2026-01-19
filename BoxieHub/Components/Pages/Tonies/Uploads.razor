@@ -64,7 +64,7 @@
                                 <tr>
                                     <td>
                                         <strong>@job.ChapterTitle</strong>
-                                        @if (job.MediaLibraryItemId.HasValue)
+                                        @if (job.MediaLibraryItemId > 0)
                                         {
                                             <br />
                                             <small class="text-muted">
@@ -98,11 +98,11 @@
                                         }
                                         else if (job.StatusEnum == TonieUploadJobStatus.Completed)
                                         {
-                                            <i class="bi bi-check-circle text-success"></i> 100%
+                                            <span><i class="bi bi-check-circle text-success"></i> 100%</span>
                                         }
                                         else if (job.StatusEnum == TonieUploadJobStatus.Failed)
                                         {
-                                            <i class="bi bi-x-circle text-danger"></i> Failed
+                                            <span><i class="bi bi-x-circle text-danger"></i> Failed</span>
                                         }
                                         else
                                         {
